@@ -8,9 +8,10 @@ import {
   Alert,
   ScrollView,
   Image,
-  Dimensions,
   StyleSheet,
-  Platform,
+  Animated,
+  Dimensions,
+  StatusBar,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -73,10 +74,10 @@ function initialsFromName(name: string) {
 // --- Visual Constants ---
 
 const COLORS = [
-  { bg: "#E0Dbf0", text: "#1C1C1E", pillBorder: "#1C1C1E", pillText: "#1C1C1E" }, // Light Purple (Social issues style)
-  { bg: "#E9F588", text: "#1C1C1E", pillBorder: "#1C1C1E", pillText: "#1C1C1E" }, // Acid Yellow (Museum style)
-  { bg: "#3661D6", text: "#FFFFFF", pillBorder: "#FFFFFF", pillText: "#FFFFFF" }, // Deep Blue (Daily life style)
-  { bg: "#EE6B4D", text: "#FFFFFF", pillBorder: "#FFFFFF", pillText: "#FFFFFF" }, // Orange/Red (Food style)
+  { bg: "#E0Dbf0", text: "#1C1C1E", pillBorder: "#1C1C1E", pillText: "#1C1C1E" }, // Light Purple
+  { bg: "#E9F588", text: "#1C1C1E", pillBorder: "#1C1C1E", pillText: "#1C1C1E" }, // Acid Yellow
+  { bg: "#3661D6", text: "#FFFFFF", pillBorder: "#FFFFFF", pillText: "#FFFFFF" }, // Deep Blue
+  { bg: "#EE6B4D", text: "#FFFFFF", pillBorder: "#FFFFFF", pillText: "#FFFFFF" }, // Orange/Red
   { bg: "#D4C4FB", text: "#1C1C1E", pillBorder: "#1C1C1E", pillText: "#1C1C1E" }, // Lavender
 ];
 
@@ -218,6 +219,9 @@ export default function NotesScreen({
   const [createVisibility, setCreateVisibility] = useState<"shared" | "personal">("shared");
   const [createType, setCreateType] = useState<"text" | "checklist">("text");
 
+  // --- Animation Ref for FAB ---
+  const fabAnim = useRef(new Animated.Value(0)).current;
+
   const memberMap = useMemo(() => {
     const map = new Map<string, Member>();
     members.forEach((m) => map.set(m.user_id, m));
@@ -234,6 +238,19 @@ export default function NotesScreen({
     () => new Set(["Movies to Watch", "Holiday Location", "Personal Note"]),
     []
   );
+
+  // --- Effects for FAB Animation ---
+  useEffect(() => {
+    // Show FAB only when not in 'create' mode and no note is open
+    const shouldShow = !openNote && tab !== 'create';
+    
+    Animated.spring(fabAnim, {
+      toValue: shouldShow ? 1 : 0,
+      friction: 6,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  }, [openNote, tab]);
 
   const loadNotes = async () => {
     try {
@@ -478,7 +495,8 @@ export default function NotesScreen({
   if (openNote) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1, backgroundColor: "#fff", paddingTop: 60 }}>
+        {/* Adjusted padding to sit below global header */}
+        <View style={{ flex: 1, backgroundColor: "#fff", paddingTop: 130 }}>
           {/* Header */}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginBottom: 20 }}>
             <Pressable onPress={() => setOpenNote(null)} style={styles.iconBtn}>
@@ -548,24 +566,11 @@ export default function NotesScreen({
   // --- MAIN LIST VIEW ---
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: "#fff", paddingTop: 60 }}>
+      <View style={{ flex: 1, backgroundColor: "#fff" }}>
         
-        {/* Header */}
-        <View style={{ paddingHorizontal: 24, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Pressable onPress={onBack} hitSlop={20} style={{marginBottom: 10}}>
-                <Text style={{fontSize: 16, fontWeight: 'bold', color: '#666'}}>← Back</Text>
-            </Pressable>
-            <Text style={{ fontSize: 34, fontWeight: "800", letterSpacing: -1 }}>My Collections</Text>
-          </View>
-          <Pressable onPress={() => setTab("create")} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center'}}>
-             <Text style={{fontSize: 24, marginTop: -2}}>+</Text>
-          </Pressable>
-        </View>
-
-        {/* Custom Tabs (Clean Filter Style) */}
+        {/* Pinned Tabs (Below Global Header) */}
         {tab !== "create" && (
-           <View style={{ paddingHorizontal: 24, flexDirection: "row", gap: 12, marginBottom: 20 }}>
+           <View style={styles.topTabsBar}>
              {["shared", "personal"].map((t) => {
                const isActive = tab === t;
                return (
@@ -592,7 +597,7 @@ export default function NotesScreen({
 
         {/* Content Area */}
         {tab === "create" ? (
-          <ScrollView contentContainerStyle={{ padding: 24 }}>
+          <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 140, paddingBottom: 150 }}>
             <View style={{ backgroundColor: "#FAFAFA", borderRadius: 32, padding: 30, gap: 20 }}>
                <Text style={{ fontSize: 24, fontWeight: "800" }}>New Collection</Text>
                
@@ -647,7 +652,7 @@ export default function NotesScreen({
             </View>
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, gap: 16 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 180, paddingBottom: 150, gap: 16 }}>
             {list.length === 0 ? (
                 <View style={{padding: 40, alignItems: 'center'}}>
                     <Text style={{color: '#ccc', fontSize: 18, fontWeight: '600'}}>No notes found</Text>
@@ -748,6 +753,36 @@ export default function NotesScreen({
             })}
           </ScrollView>
         )}
+
+        {/* --- LIQUID BUBBLE FAB --- */}
+        <Animated.View
+          style={[
+            styles.fabContainer,
+            {
+              transform: [
+                { scale: fabAnim }, 
+                {
+                  translateY: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [50, 0], 
+                  }),
+                },
+              ],
+              opacity: fabAnim,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={() => setTab("create")}
+            style={({ pressed }) => [
+              styles.fabButton,
+              pressed && { transform: [{ scale: 0.9 }] },
+            ]}
+          >
+            <Text style={styles.fabIcon}>+</Text>
+          </Pressable>
+        </Animated.View>
+
       </View>
     </GestureHandlerRootView>
   );
@@ -780,5 +815,45 @@ const styles = StyleSheet.create({
     },
     createBtn: {
         backgroundColor: '#000', height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginTop: 10, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: {width:0, height:4}
+    },
+    
+    // Top Tabs Pinned
+    topTabsBar: {
+        position: 'absolute',
+        top: 120, 
+        left: 0, 
+        right: 0,
+        zIndex: 50,
+        paddingHorizontal: 24,
+        flexDirection: "row", 
+        gap: 12
+    },
+
+    // FAB Styles
+    fabContainer: {
+        position: 'absolute',
+        bottom: 110, // Sits above the HomeGate nav bar
+        right: 24,
+        zIndex: 100,
+    },
+    fabButton: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: '#FF5A36', 
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: "#FF5A36",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    fabIcon: {
+        fontSize: 32,
+        color: 'white',
+        fontWeight: '400',
+        marginTop: -4,
+        marginLeft: 2
     }
 });

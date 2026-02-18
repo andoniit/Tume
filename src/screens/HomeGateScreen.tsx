@@ -9,15 +9,15 @@ import {
   TextInput,
   Animated,
   Image,
-  ScrollView,
-  SafeAreaView,
   StyleSheet,
   StatusBar,
   Platform,
-  LayoutAnimation,
   UIManager,
-  Dimensions
+  Dimensions,
+  Easing
 } from "react-native";
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { supabase } from "../lib/supabase";
 import HomeSetupScreen from "./HomeSetupScreen";
 import ProfileEditScreen from "./ProfileEditScreen";
@@ -32,8 +32,9 @@ if (Platform.OS === 'android') {
   }
 }
 
-// --- Types ---
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// --- Types ---
 type Home = {
   id: string;
   name: string;
@@ -77,15 +78,7 @@ type NoteRow = {
   updated_at: string;
 };
 
-type MealEntryRow = {
-  meal: "breakfast" | "lunch" | "dinner";
-  cooked: boolean;
-  dishes_cleaned: boolean;
-  title: string | null;
-};
-
 // --- Helpers ---
-
 function displayNameFromProfile(p?: Profile | null) {
   return (
     p?.nickname?.trim() ||
@@ -116,7 +109,6 @@ async function copyToClipboardSafe(text: string) {
 }
 
 // --- Components ---
-
 function AvatarBubble({ uri, label, size = 40, inverse = false }: { uri?: string | null; label: string; size?: number, inverse?: boolean }) {
   const initials = useMemo(() => initialsFromName(label), [label]);
   return (
@@ -142,8 +134,28 @@ function AvatarBubble({ uri, label, size = 40, inverse = false }: { uri?: string
   );
 }
 
-// --- Liquid Glass Navigation Bar ---
+// --- Animated Counter ---
+function AnimatedCounter({ value }: { value: number }) {
+  const [displayValue, setDisplayValue] = useState(0);
 
+  useEffect(() => {
+    let startTime: number | null = null;
+    const duration = 2000; 
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 4);
+      setDisplayValue(Math.floor(ease * value));
+      if (progress < 1) requestAnimationFrame(animate);
+      else setDisplayValue(value);
+    };
+    requestAnimationFrame(animate);
+  }, [value]);
+
+  return <Text style={{ color: '#fff', fontSize: 56, fontWeight: '900', lineHeight: 60 }}>{displayValue}</Text>;
+}
+
+// --- Floating Nav ---
 const TABS: { id: ScreenKey; icon: string; label: string }[] = [
   { id: 'home', icon: '⌂', label: 'Home' },
   { id: 'tasks', icon: '✓', label: 'Tasks' },
@@ -153,45 +165,45 @@ const TABS: { id: ScreenKey; icon: string; label: string }[] = [
 
 function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: ScreenKey) => void }) {
   const [layoutWidth, setLayoutWidth] = useState(0);
-  // We use this animated value to slide the pill
   const translateX = useRef(new Animated.Value(0)).current;
-
-  // Calculate the width of a single tab based on the container width
-  // Total padding is 6 (left) + 6 (right) = 12. 
-  // But we want the calculation to be based on the inner content area.
-  // Actually simpler: If we have 4 tabs, each takes 25% of the available width.
   const tabWidth = layoutWidth > 0 ? (layoutWidth - 12) / TABS.length : 0;
 
   useEffect(() => {
     const activeIndex = TABS.findIndex(t => t.id === active);
     if (activeIndex !== -1 && tabWidth > 0) {
       Animated.spring(translateX, {
-        toValue: (activeIndex * tabWidth) + 6, // +6 for the left padding offset
+        toValue: (activeIndex * tabWidth) + 6,
         useNativeDriver: true,
-        friction: 6,   // Control "bounciness"
-        tension: 80,   // Control speed
+        friction: 6,
+        tension: 80,
       }).start();
     }
   }, [active, tabWidth]);
 
   return (
     <View style={styles.navWrapper}>
-      {/* Glass Container */}
-      <View 
-        style={styles.navContainer} 
-        onLayout={(e) => setLayoutWidth(e.nativeEvent.layout.width)}
-      >
-        {/* The Sliding Orange Pill */}
+      {/* Liquid Glass Container */}
+      <View style={styles.navContainer} onLayout={(e) => setLayoutWidth(e.nativeEvent.layout.width)}>
+        {/* Blur Background for entire bar */}
+        <BlurView intensity={30} tint="default" style={StyleSheet.absoluteFill} />
+        
+        {/* Active Pill (Liquid Glass Orange) */}
         {tabWidth > 0 && (
           <Animated.View 
             style={[
               styles.navPill, 
               { 
-                width: tabWidth,
-                transform: [{ translateX }] 
+                width: tabWidth, 
+                transform: [{ translateX }],
+                overflow: 'hidden',
               }
-            ]} 
-          />
+            ]}
+          >
+             {/* Inner Blur for Liquid Effect */}
+             <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+             {/* Orange Tint Layer */}
+             <View style={[StyleSheet.absoluteFill, { backgroundColor: '#FF5A36', opacity: 0.85 }]} />
+          </Animated.View>
         )}
 
         {/* Tab Items */}
@@ -199,22 +211,17 @@ function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: 
           {TABS.map((tab) => {
             const isActive = active === tab.id;
             return (
-              <Pressable
-                key={tab.id}
-                onPress={() => onChange(tab.id)}
+              <Pressable 
+                key={tab.id} 
+                onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+                    onChange(tab.id);
+                }} 
                 style={styles.navItem}
               >
-                <Text style={{ 
-                    fontSize: 24, 
-                    color: isActive ? '#fff' : '#8E8E93', 
-                    fontWeight: isActive ? '900' : '500'
-                }}>
-                  {tab.icon}
-                </Text>
+                <Text style={{ fontSize: 24, color: isActive ? '#fff' : '#8E8E93', fontWeight: isActive ? '900' : '500' }}>{tab.icon}</Text>
                 {isActive && (
-                  <Animated.Text style={styles.navLabel}>
-                    {tab.label}
-                  </Animated.Text>
+                  <Animated.Text style={styles.navLabel}>{tab.label}</Animated.Text>
                 )}
               </Pressable>
             );
@@ -226,7 +233,6 @@ function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: 
 }
 
 // --- Main Screen ---
-
 export default function HomeGateScreen() {
   const [screen, setScreen] = useState<ScreenKey>("home");
   const [loading, setLoading] = useState(true);
@@ -235,20 +241,26 @@ export default function HomeGateScreen() {
   const [home, setHome] = useState<Home | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  
+  // Animation Values
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const profileOpenAnim = useRef(new Animated.Value(0)).current; 
+  
+  // Header State Animation (0 = Home/Logo Mode, 1 = SubPage/Title Mode)
+  const headerStateAnim = useRef(new Animated.Value(0)).current;
 
   // Home flip
   const [homeOpen, setHomeOpen] = useState(false);
   const [editingHome, setEditingHome] = useState(false);
   const [editName, setEditName] = useState("");
   const [editLocation, setEditLocation] = useState("");
-
   const flip = useRef(new Animated.Value(0)).current;
+  
   const loadingRef = useRef(false);
-
-  // Previews
   const [previewTasks, setPreviewTasks] = useState<TaskRow[]>([]);
   const [previewNotes, setPreviewNotes] = useState<NoteRow[]>([]);
 
+  // Flip Interpolations
   const frontInterpolate = flip.interpolate({ inputRange: [0, 180], outputRange: ["0deg", "180deg"] });
   const backInterpolate = flip.interpolate({ inputRange: [0, 180], outputRange: ["180deg", "360deg"] });
   const frontOpacity = flip.interpolate({ inputRange: [89, 90], outputRange: [1, 0] });
@@ -328,142 +340,329 @@ export default function HomeGateScreen() {
     if (!error) await load();
   };
 
+  // --- TRANSITION LOGIC ---
+  
+  useEffect(() => {
+    if (screen === 'home') {
+        // Go to Logo State
+        Animated.spring(headerStateAnim, { 
+            toValue: 0, 
+            useNativeDriver: true, 
+            friction: 8, 
+            tension: 40 
+        }).start();
+    } else {
+        // Go to Title State
+        Animated.spring(headerStateAnim, { 
+            toValue: 1, 
+            useNativeDriver: true, 
+            friction: 8, 
+            tension: 40 
+        }).start();
+    }
+  }, [screen]);
+
+  const openProfile = () => {
+    setScreen('profileEdit');
+    profileOpenAnim.setValue(0);
+    Animated.spring(profileOpenAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 50
+    }).start();
+  };
+
+  const closeProfile = () => {
+    Animated.timing(profileOpenAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+      easing: Easing.inOut(Easing.ease)
+    }).start(() => setScreen('home'));
+  };
+
   const me = members.find(m => m.user_id === userId);
   const partner = members.find(m => m.user_id !== userId);
   const myName = me ? displayNameFromProfile(me.profiles) : "You";
   const partnerName = partner ? displayNameFromProfile(partner.profiles) : "Partner";
 
+  // --- Animations ---
+  // Header Glass Blur Opacity (Only on Home when scrolling)
+  const headerBlurOpacity = scrollY.interpolate({
+    inputRange: [0, 50],
+    outputRange: [0, 1],
+    extrapolate: 'clamp'
+  });
+
+  // Dynamic Header Transformations
+  // Logo scales down significantly to look like a label
+  const logoScale = headerStateAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [1, 0.4] // Big (1) -> Small (0.4)
+  });
+  
+  // Logo moves UP to become a top label
+  const logoTranslateY = headerStateAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, -20] 
+  });
+  
+  // Logo moves LEFT to maintain alignment when scaling (since it scales from center)
+  const logoTranslateX = headerStateAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, -32] 
+  });
+
+  // Page Title Entrance (Opposite of logo)
+  // It enters from slightly below, and fades in
+  const titleTranslateY = headerStateAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [20, 16] // Starts lower, lands at proper position
+  });
+  const titleOpacity = headerStateAnim.interpolate({
+      inputRange: [0, 0.6, 1],
+      outputRange: [0, 0, 1] // Fades in late
+  });
+
+
+  // Profile Overlay
+  const scale = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [0.12, 1] });
+  const translateX = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_WIDTH/2 - 48, 0] });
+  const translateY = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [-(SCREEN_HEIGHT/2 - 80), 0] });
+  const overlayRadius = profileOpenAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [200, 50, 0] });
+  const overlayOpacity = profileOpenAnim.interpolate({ inputRange: [0, 0.1, 1], outputRange: [0, 1, 1] });
+
+  // Get Page Title
+  const getPageTitle = () => {
+      switch(screen) {
+          case 'tasks': return "Tasks";
+          case 'notes': return "Notes";
+          case 'mealPrep': return "Meals";
+          default: return "";
+      }
+  };
+
   const renderCurrentScreen = () => {
     if (loading && !home) return <View style={styles.center}><ActivityIndicator color="#000" /></View>;
     if (!home) return <HomeSetupScreen onDone={load} />;
-    
-    if (screen === "profileEdit") return <ProfileEditScreen onBack={() => setScreen("home")} onSaved={load} mode={"edit"} />;
     if (screen === "profileCreate") return <ProfileEditScreen onBack={() => setScreen("home")} onSaved={load} mode={"create"} />;
 
     switch (screen) {
+        // Pass onBack but the header is now handled globally.
+        // Important: Sub-screens should NOT implement their own header anymore.
         case "tasks": return <TasksScreen spaceId={home.id} members={members} onBack={() => setScreen("home")} />;
         case "notes": return <NotesScreen spaceId={home.id} members={members} onBack={() => setScreen("home")} />;
         case "mealPrep": return <MealPrepScreen spaceId={home.id} members={members} onBack={() => setScreen("home")} />;
+        
+        // --- HOME SCREEN ---
         case "home":
         default:
             return (
-                <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 150, gap: 20 }} showsVerticalScrollIndicator={false}>
-                    <View style={{ marginTop: 10, marginBottom: 10 }}>
-                        <Text style={styles.subLabel}>WELCOME TO</Text>
-                        <Text style={styles.heroTitle}>{home.name.toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.quotePill}>
-                       <Text style={{ fontWeight: '700', fontSize: 13, color: '#666' }}>"{quoteOfDay}"</Text>
-                    </View>
+                <View style={{flex: 1}}>
+                  <Animated.ScrollView 
+                    onScroll={Animated.event(
+                        [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                        { useNativeDriver: false }
+                    )}
+                    scrollEventThrottle={16}
+                    contentContainerStyle={{ 
+                        paddingHorizontal: 24, 
+                        paddingBottom: 150, 
+                        paddingTop: 140, 
+                        gap: 20 
+                    }} 
+                    showsVerticalScrollIndicator={false}
+                  >
+                      {/* Welcome */}
+                      <View style={{ marginTop: 0, marginBottom: 10 }}>
+                          <Text style={styles.subLabel}>WELCOME TO</Text>
+                          <Text style={styles.heroTitle}>{home.name.toUpperCase()}</Text>
+                      </View>
+                      
+                      <View style={styles.quotePill}>
+                        <Text style={{ fontWeight: '700', fontSize: 13, color: '#666' }}>"{quoteOfDay}"</Text>
+                      </View>
 
-                    <View style={styles.heroCard}>
-                       <View>
-                          <Text style={{ color: '#fff', fontSize: 56, fontWeight: '900', lineHeight: 60 }}>{daysConnected}</Text>
-                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '800', letterSpacing: 1 }}>DAYS CONNECTED</Text>
-                       </View>
-                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <View style={{zIndex: 1}}>
-                               <AvatarBubble uri={partner?.profiles?.avatar_url} label={partnerName} size={48} inverse />
-                               <Text style={{color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 4}}>{partner ? partnerName : "Invite"}</Text>
-                            </View>
-                            <View style={{marginLeft: -15, opacity: 0.6, transform: [{scale: 0.8}]}}>
-                                <AvatarBubble uri={me?.profiles?.avatar_url} label={myName} size={48} inverse />
-                            </View>
-                       </View>
-                    </View>
-
-                    <Text style={styles.sectionTitle}>YOUR HOME</Text>
-                    <View style={{flexDirection: 'row', gap: 16}}>
-                        <Pressable onPress={() => setScreen("tasks")} style={[styles.moduleCard, {backgroundColor: '#3661D6', flex: 1}]}>
-                            <View style={styles.iconCircle}><Text style={{fontSize: 20}}>✓</Text></View>
-                            <View>
-                                <Text style={styles.cardTitle}>Tasks</Text>
-                                <Text style={styles.cardSub}>{previewTasks.length} pending</Text>
-                            </View>
-                        </Pressable>
-
-                        <Pressable onPress={() => setScreen("mealPrep")} style={[styles.moduleCard, {backgroundColor: '#EE6B4D', flex: 1}]}>
-                            <View style={styles.iconCircle}><Text style={{fontSize: 20}}>🍳</Text></View>
-                            <View>
-                                <Text style={styles.cardTitle}>Meals</Text>
-                                <Text style={styles.cardSub}>Plan today</Text>
-                            </View>
-                        </Pressable>
-                    </View>
-
-                    {/* NOTES MODULE - Restored */}
-                    <Pressable onPress={() => setScreen("notes")} style={[styles.moduleCard, {backgroundColor: '#E0Dbf0', height: 110, flexDirection: 'row', alignItems: 'center', padding: 24}]}>
-                         <View style={[styles.iconCircle, {backgroundColor: 'rgba(255,255,255,0.5)', marginBottom: 0, marginRight: 20}]}>
-                             <Text style={{fontSize: 20}}>📝</Text>
-                         </View>
-                         <View style={{flex: 1}}>
-                             <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-                                <Text style={[styles.cardTitle, {color: '#1C1C1E'}]}>Notes</Text>
-                                <Text style={{fontSize: 10, fontWeight: '900', opacity: 0.4, letterSpacing: 1}}>RECENT</Text>
-                             </View>
-                             <Text style={[styles.cardSub, {color: 'rgba(28,28,30,0.6)'}]}>
-                                {previewNotes.length > 0 ? previewNotes[0].title : "Create a new note..."}
-                             </Text>
-                         </View>
-                    </Pressable>
-
-                    <Pressable onPress={() => setHomeOpen(!homeOpen)}>
-                        <View style={[styles.card, {backgroundColor: '#E9F588', minHeight: 120}]}>
-                            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20}}>
-                                <Text style={{fontSize: 12, fontWeight: '900', opacity: 0.5, letterSpacing: 1}}>SETTINGS</Text>
-                                <Text style={{fontSize: 20}}>⚙️</Text>
-                            </View>
-
-                            {!homeOpen ? (
-                                 <View>
-                                     <Text style={{fontSize: 24, fontWeight: '900'}}>{home.name}</Text>
-                                     <Text style={{fontWeight: '700', opacity: 0.6}}>{home.location_text || "No location set"}</Text>
-                                 </View>
-                            ) : (
-                                <View style={{ height: editingHome ? 240 : 200 }}>
-                                    <Animated.View style={{ position: "absolute", width: "100%", height: "100%", opacity: frontOpacity, transform: [{ rotateY: frontInterpolate }], backfaceVisibility: "hidden" }}>
-                                        <Text style={{fontSize: 12, fontWeight: '900', opacity: 0.5, marginBottom: 4}}>INVITE CODE</Text>
-                                        <Pressable onPress={copyInviteCode} style={{backgroundColor: 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 12, marginBottom: 16}}>
-                                            <Text style={{fontSize: 24, fontWeight: '900', letterSpacing: 2, textAlign: 'center'}}>{home.invite_code}</Text>
-                                        </Pressable>
-                                        <View style={{flexDirection: 'row', gap: 10, marginBottom: 10}}>
-                                            <Pressable onPress={flipToEdit} style={styles.actionBtn}><Text style={styles.actionBtnText}>Edit</Text></Pressable>
-                                            <Pressable onPress={shareInvite} style={styles.actionBtn}><Text style={styles.actionBtnText}>Share</Text></Pressable>
-                                        </View>
-                                        <Pressable onPress={leaveHome} style={[styles.actionBtn, {backgroundColor: 'rgba(0,0,0,0.05)'}]}><Text style={styles.actionBtnText}>Leave Home</Text></Pressable>
-                                    </Animated.View>
-                                    <Animated.View style={{ position: "absolute", width: "100%", height: "100%", opacity: backOpacity, transform: [{ rotateY: backInterpolate }], backfaceVisibility: "hidden" }}>
-                                         <TextInput value={editName} onChangeText={setEditName} placeholder="Home Name" style={styles.input} />
-                                         <TextInput value={editLocation} onChangeText={setEditLocation} placeholder="Location" style={styles.input} />
-                                         <View style={{flexDirection: 'row', gap: 10, marginTop: 10}}>
-                                             <Pressable onPress={saveHomeEdits} style={[styles.actionBtn, {backgroundColor: '#000'}]}><Text style={[styles.actionBtnText, {color: '#fff'}]}>Save</Text></Pressable>
-                                             <Pressable onPress={flipBack} style={styles.actionBtn}><Text style={styles.actionBtnText}>Cancel</Text></Pressable>
-                                         </View>
-                                    </Animated.View>
-                                </View>
-                            )}
+                      {/* Hero Card */}
+                      <View style={styles.heroCard}>
+                        <View>
+                            <AnimatedCounter value={daysConnected} />
+                            <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '800', letterSpacing: 1 }}>DAYS CONNECTED</Text>
                         </View>
-                    </Pressable>
-                </ScrollView>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <View style={{zIndex: 1}}>
+                                <AvatarBubble uri={partner?.profiles?.avatar_url} label={partnerName} size={48} inverse />
+                                <Text style={{color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 4}}>{partner ? partnerName : "Invite"}</Text>
+                              </View>
+                              <View style={{marginLeft: -15, opacity: 0.6, transform: [{scale: 0.8}]}}>
+                                  <AvatarBubble uri={me?.profiles?.avatar_url} label={myName} size={48} inverse />
+                              </View>
+                        </View>
+                      </View>
+
+                      <Text style={styles.sectionTitle}>YOUR HOME</Text>
+                      <View style={{flexDirection: 'row', gap: 16}}>
+                          <Pressable onPress={() => setScreen("tasks")} style={[styles.moduleCard, {backgroundColor: '#3661D6', flex: 1}]}>
+                              <View style={styles.iconCircle}><Text style={{fontSize: 20}}>✓</Text></View>
+                              <View>
+                                  <Text style={styles.cardTitle}>Tasks</Text>
+                                  <Text style={styles.cardSub}>{previewTasks.length} pending</Text>
+                              </View>
+                          </Pressable>
+
+                          <Pressable onPress={() => setScreen("mealPrep")} style={[styles.moduleCard, {backgroundColor: '#EE6B4D', flex: 1}]}>
+                              <View style={styles.iconCircle}><Text style={{fontSize: 20}}>🍳</Text></View>
+                              <View>
+                                  <Text style={styles.cardTitle}>Meals</Text>
+                                  <Text style={styles.cardSub}>Plan today</Text>
+                              </View>
+                          </Pressable>
+                      </View>
+
+                      {/* Notes */}
+                      <Pressable onPress={() => setScreen("notes")} style={[styles.moduleCard, {backgroundColor: '#E0Dbf0', height: 110, flexDirection: 'row', alignItems: 'center', padding: 24}]}>
+                          <View style={[styles.iconCircle, {backgroundColor: 'rgba(255,255,255,0.5)', marginBottom: 0, marginRight: 20}]}>
+                              <Text style={{fontSize: 20}}>📝</Text>
+                          </View>
+                          <View style={{flex: 1}}>
+                              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                                  <Text style={[styles.cardTitle, {color: '#1C1C1E'}]}>Notes</Text>
+                                  <Text style={{fontSize: 10, fontWeight: '900', opacity: 0.4, letterSpacing: 1}}>RECENT</Text>
+                              </View>
+                              <Text style={[styles.cardSub, {color: 'rgba(28,28,30,0.6)'}]}>
+                                  {previewNotes.length > 0 ? previewNotes[0].title : "Create a new note..."}
+                              </Text>
+                          </View>
+                      </Pressable>
+
+                      {/* Settings Card */}
+                      <Pressable onPress={() => setHomeOpen(!homeOpen)}>
+                          <View style={[styles.card, {backgroundColor: '#E9F588', minHeight: 120}]}>
+                              <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20}}>
+                                  <Text style={{fontSize: 12, fontWeight: '900', opacity: 0.5, letterSpacing: 1}}>SETTINGS</Text>
+                                  <Text style={{fontSize: 20}}>⚙️</Text>
+                              </View>
+
+                              {!homeOpen ? (
+                                  <View>
+                                      <Text style={{fontSize: 24, fontWeight: '900'}}>{home.name}</Text>
+                                      <Text style={{fontWeight: '700', opacity: 0.6}}>{home.location_text || "No location set"}</Text>
+                                  </View>
+                              ) : (
+                                  <View style={{ height: editingHome ? 240 : 200 }}>
+                                      <Animated.View style={{ position: "absolute", width: "100%", height: "100%", opacity: frontOpacity, transform: [{ rotateY: frontInterpolate }], backfaceVisibility: "hidden" }}>
+                                          <Text style={{fontSize: 12, fontWeight: '900', opacity: 0.5, marginBottom: 4}}>INVITE CODE</Text>
+                                          <Pressable onPress={copyInviteCode} style={{backgroundColor: 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 12, marginBottom: 16}}>
+                                              <Text style={{fontSize: 24, fontWeight: '900', letterSpacing: 2, textAlign: 'center'}}>{home.invite_code}</Text>
+                                          </Pressable>
+                                          <View style={{flexDirection: 'row', gap: 10, marginBottom: 10}}>
+                                              <Pressable onPress={flipToEdit} style={styles.actionBtn}><Text style={styles.actionBtnText}>Edit</Text></Pressable>
+                                              <Pressable onPress={shareInvite} style={styles.actionBtn}><Text style={styles.actionBtnText}>Share</Text></Pressable>
+                                          </View>
+                                          <Pressable onPress={leaveHome} style={[styles.actionBtn, {backgroundColor: 'rgba(0,0,0,0.05)'}]}><Text style={styles.actionBtnText}>Leave Home</Text></Pressable>
+                                      </Animated.View>
+                                      <Animated.View style={{ position: "absolute", width: "100%", height: "100%", opacity: backOpacity, transform: [{ rotateY: backInterpolate }], backfaceVisibility: "hidden" }}>
+                                          <TextInput value={editName} onChangeText={setEditName} placeholder="Home Name" style={styles.input} />
+                                          <TextInput value={editLocation} onChangeText={setEditLocation} placeholder="Location" style={styles.input} />
+                                          <View style={{flexDirection: 'row', gap: 10, marginTop: 10}}>
+                                              <Pressable onPress={saveHomeEdits} style={[styles.actionBtn, {backgroundColor: '#000'}]}><Text style={[styles.actionBtnText, {color: '#fff'}]}>Save</Text></Pressable>
+                                              <Pressable onPress={flipBack} style={styles.actionBtn}><Text style={styles.actionBtnText}>Cancel</Text></Pressable>
+                                          </View>
+                                      </Animated.View>
+                                  </View>
+                              )}
+                          </View>
+                      </Pressable>
+                  </Animated.ScrollView>
+                </View>
             );
     }
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: "white" }}>
-      <StatusBar barStyle="dark-content" />
-      <SafeAreaView style={{ flex: 0, backgroundColor: "#fff" }} />
-      <View style={{ flex: 1 }}>
-        <View style={styles.headerContainer}>
-            <Text style={styles.logoText}>tume.</Text>
-            <Pressable onPress={() => setScreen("profileEdit")}>
-               <AvatarBubble uri={profile?.avatar_url} label={myName} size={48} />
-            </Pressable>
-        </View>
+      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+      
+      <View style={{ flex: 1, position: 'relative' }}>
+        
+        {/* --- GLOBAL DYNAMIC HEADER --- */}
+        {screen !== 'profileCreate' && screen !== 'profileEdit' && (
+            <Animated.View style={styles.headerWrapper}>
+                {/* Background Blur:
+                    On Home: Opacity is controlled by ScrollY.
+                    On Other Screens: Always fully blurred (opacity 1)
+                */}
+                <Animated.View style={[StyleSheet.absoluteFill, { opacity: screen === 'home' ? headerBlurOpacity : 1 }]}>
+                    <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+                </Animated.View>
+                
+                <View style={styles.headerContainer}>
+                    <View style={styles.headerTextContainer}>
+                        {/* The LOGO */}
+                        <Animated.Text 
+                            style={[
+                                styles.logoText, 
+                                { 
+                                    transform: [
+                                        { scale: logoScale }, 
+                                        { translateY: logoTranslateY },
+                                        { translateX: logoTranslateX }
+                                    ] 
+                                }
+                            ]}
+                        >
+                            tume.
+                        </Animated.Text>
+                        
+                        {/* The Page Title (Visible only on sub-screens) */}
+                        <Animated.Text 
+                            style={[
+                                styles.pageTitle, 
+                                { 
+                                    opacity: titleOpacity,
+                                    transform: [{ translateY: titleTranslateY }]
+                                }
+                            ]}
+                        >
+                            {getPageTitle()}
+                        </Animated.Text>
+                    </View>
 
+                    <Pressable onPress={openProfile} hitSlop={20}>
+                       <AvatarBubble uri={profile?.avatar_url} label={myName} size={48} />
+                    </Pressable>
+                </View>
+            </Animated.View>
+        )}
+
+        {/* Content */}
         <View style={{ flex: 1 }}>{renderCurrentScreen()}</View>
 
-        {home && !["profileEdit", "profileCreate"].includes(screen) && (
+        {/* --- PROFILE OVERLAY --- */}
+        {screen === 'profileEdit' && (
+             <Animated.View 
+                style={[
+                    styles.profileOverlay, 
+                    { 
+                        opacity: overlayOpacity,
+                        borderRadius: overlayRadius,
+                        transform: [
+                            { translateX },
+                            { translateY },
+                            { scale }
+                        ]
+                    }
+                ]}
+             >
+                 <View style={{flex: 1, overflow: 'hidden'}}>
+                    <ProfileEditScreen onBack={closeProfile} onSaved={load} mode={"edit"} />
+                 </View>
+             </Animated.View>
+        )}
+
+        {/* Floating Nav */}
+        {home && screen !== 'profileEdit' && screen !== 'profileCreate' && (
              <FloatingNavBar active={screen} onChange={setScreen} />
         )}
       </View>
@@ -476,12 +675,46 @@ const styles = StyleSheet.create({
     card: { borderRadius: 32, padding: 24 },
     
     // Header
-    headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#fff', zIndex: 10 },
-    logoText: { fontSize: 38, fontWeight: '900', letterSpacing: -2, color: '#000' },
-    heroTitle: { fontSize: 36, fontWeight: '800', letterSpacing: -1, color: '#000', marginTop: 4 },
-    subLabel: { fontSize: 12, fontWeight: '800', color: '#999', letterSpacing: 1 },
+    headerWrapper: {
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
+        height: 120, // Taller header
+        justifyContent: 'flex-end',
+        paddingBottom: 15,
+    },
+    headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 24, paddingBottom: 10 },
+    
+    headerTextContainer: {
+        flex: 1,
+        height: 50, // Fixed height area for text to animate inside
+        justifyContent: 'flex-end',
+        position: 'relative',
+    },
+    logoText: { 
+        fontSize: 38, fontWeight: '900', letterSpacing: -2, color: '#000',
+        position: 'absolute', bottom: 0, left: 0,
+    },
+    pageTitle: { 
+        fontSize: 34, fontWeight: '800', color: '#000', 
+        position: 'absolute', bottom: 0, left: 0 
+    },
+    
+    // Profile Overlay
+    profileOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 200,
+        backgroundColor: '#fff',
+        overflow: 'hidden',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.2,
+        shadowRadius: 20,
+        elevation: 10,
+    },
 
     // Content
+    heroTitle: { fontSize: 36, fontWeight: '800', letterSpacing: -1, color: '#000', marginTop: 0 },
+    subLabel: { fontSize: 12, fontWeight: '800', color: '#999', letterSpacing: 1 },
+
     heroCard: { backgroundColor: '#1C1C1E', borderRadius: 32, padding: 30, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     quotePill: { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f4f4f4', marginBottom: 10 },
     sectionTitle: { fontSize: 12, fontWeight: '800', color: '#999', letterSpacing: 1, marginLeft: 4 },
@@ -500,40 +733,28 @@ const styles = StyleSheet.create({
     navWrapper: { position: 'absolute', bottom: 30, left: 24, right: 24, alignItems: 'center', zIndex: 100 },
     navContainer: {
         flexDirection: 'row',
-        padding: 6, // Uniform spacing all around
+        padding: 6,
         borderRadius: 100,
         height: 68,
         width: '100%',
-        backgroundColor: 'rgba(255,255,255,0.9)',
+        backgroundColor: 'rgba(255,255,255,0.25)', 
+        overflow: 'hidden', 
         borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
-        shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 10 },
+        shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 25, shadowOffset: { width: 0, height: 10 },
         elevation: 10,
-        position: 'relative' // Needed for absolute positioning of the pill
+        position: 'relative'
     },
     navPill: {
-        position: 'absolute',
-        top: 6, // Matches container padding
-        bottom: 6, // Matches container padding
-        left: 0, 
-        backgroundColor: '#FF5A36',
-        borderRadius: 40,
-        zIndex: 0
+        position: 'absolute', top: 6, bottom: 6, left: 0, 
+        borderRadius: 40, zIndex: 0,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        shadowColor: '#FF5A36',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
     },
-    navItemsRow: {
-        flex: 1,
-        flexDirection: 'row',
-        zIndex: 1
-    },
-    navItem: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-    },
-    navLabel: {
-        color: '#fff',
-        fontWeight: '800',
-        fontSize: 14,
-        marginLeft: 8,
-    }
+    navItemsRow: { flex: 1, flexDirection: 'row', zIndex: 1 },
+    navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
+    navLabel: { color: '#fff', fontWeight: '800', fontSize: 14, marginLeft: 8 }
 });

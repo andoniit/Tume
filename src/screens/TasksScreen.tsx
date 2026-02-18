@@ -11,6 +11,8 @@ import {
   Image,
   Modal,
   StyleSheet,
+  Animated,
+  StatusBar,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Swipeable from "react-native-gesture-handler/Swipeable";
@@ -43,7 +45,7 @@ type Task = {
   assigned_scope?: "single" | "both" | string;
 };
 
-// --- Visual Constants (Matching Screenshot) ---
+// --- Visual Constants ---
 
 const COLORS = [
   { bg: "#E0Dbf0", text: "#1C1C1E", pillBorder: "#1C1C1E", pillText: "#1C1C1E" }, // Light Purple
@@ -258,6 +260,10 @@ export default function TasksScreen({
   const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
   const [pickerValue, setPickerValue] = useState<Date>(new Date());
 
+  // --- Animation Refs ---
+  const fabAnim = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+
   const memberMap = useMemo(() => {
     const map = new Map<string, Member>();
     members.forEach((m) => map.set(m.user_id, m));
@@ -271,6 +277,20 @@ export default function TasksScreen({
 
   const meMember = useMemo(() => (me ? memberMap.get(me) || null : null), [me, memberMap]);
   const partnerMember = useMemo(() => (partner ? memberMap.get(partner.user_id) || partner : null), [partner, memberMap]);
+
+  // --- Effects ---
+
+  useEffect(() => {
+    // Show FAB only when not in 'create' mode
+    const shouldShow = tab !== 'create';
+    
+    Animated.spring(fabAnim, {
+      toValue: shouldShow ? 1 : 0,
+      friction: 6,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  }, [tab]);
 
   const load = async () => {
     try {
@@ -466,127 +486,132 @@ export default function TasksScreen({
     );
   }
 
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.container}>
-        {/* popup picker */}
-        <PickerModal
-          visible={pickerVisible}
-          mode={pickerMode}
-          value={pickerValue}
-          onCancel={() => setPickerVisible(false)}
-          onConfirm={(val) => {
-            setPickerVisible(false);
-            if (pickerMode === "date") setPickedDate(val);
-            else setPickedTime(val);
-          }}
-        />
+  // Common Scroll Content
+  const renderContent = () => {
+      if(tab === "create") {
+          return (
+             <ScrollView 
+                contentContainerStyle={{ padding: 24, paddingBottom: 150, paddingTop: 130 }}
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
+             >
+                 <View style={styles.formCard}>
+                    <Text style={styles.formHeader}>New Task</Text>
 
-        {/* Header */}
-        <View style={styles.header}>
-            <Pressable onPress={onBack} hitSlop={20} style={{marginBottom: 10}}>
-                <Text style={styles.backLink}>← Back</Text>
-            </Pressable>
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-                <Text style={styles.title}>Tasks</Text>
-                <Pressable onPress={() => setTab("create")} style={styles.addBtn}>
-                    <Text style={{fontSize: 24, marginTop: -2}}>+</Text>
-                </Pressable>
-            </View>
-        </View>
+                    <View>
+                        <Text style={styles.label}>ASSIGN TO</Text>
+                        <View style={{ flexDirection: "row", gap: 10 }}>
+                            {[{ id: 'me', label: 'Me' }, { id: 'partner', label: 'Partner' }, { id: 'both', label: 'Both' }].map((opt) => (
+                                <Pressable
+                                    key={opt.id}
+                                    onPress={() => opt.id !== 'me' && !partner ? null : setAssignMode(opt.id as any)}
+                                    style={[styles.selectBtn, assignMode === opt.id && styles.selectBtnActive, (opt.id !== 'me' && !partner) && {opacity: 0.5}]}
+                                >
+                                    <Text style={[styles.selectText, assignMode === opt.id && styles.selectTextActive]}>{opt.label.toUpperCase()}</Text>
+                                </Pressable>
+                            ))}
+                        </View>
+                    </View>
 
-        {/* Tabs */}
-        {tab !== 'create' && (
-            <View style={styles.tabsContainer}>
-            {([
-                { id: "shared", label: "Shared" },
-                { id: "requests", label: `Requests${requests.length ? ` (${requests.length})` : ""}` }
-            ] as const).map((tItem) => {
-                const isActive = tab === tItem.id;
-                return (
-                <Pressable
-                    key={tItem.id}
-                    onPress={() => setTab(tItem.id as any)}
-                    style={[styles.pill, isActive && styles.pillActive]}
-                >
-                    <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{tItem.label}</Text>
-                </Pressable>
-                );
-            })}
-            </View>
-        )}
+                    <View>
+                        <Text style={styles.label}>DETAILS</Text>
+                        <TextInput
+                            value={title}
+                            onChangeText={setTitle}
+                            placeholder="Task Title"
+                            style={styles.input}
+                            placeholderTextColor="#aaa"
+                        />
+                        <TextInput
+                            value={desc}
+                            onChangeText={setDesc}
+                            placeholder="Description (optional)"
+                            multiline
+                            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                            placeholderTextColor="#aaa"
+                        />
+                    </View>
 
-        {/* Create Form */}
-        {tab === "create" ? (
-           <ScrollView contentContainerStyle={{ padding: 24 }}>
-             <View style={styles.formCard}>
-                <Text style={styles.formHeader}>New Task</Text>
-
-                <View>
-                    <Text style={styles.label}>ASSIGN TO</Text>
-                    <View style={{ flexDirection: "row", gap: 10 }}>
-                        {[{ id: 'me', label: 'Me' }, { id: 'partner', label: 'Partner' }, { id: 'both', label: 'Both' }].map((opt) => (
-                            <Pressable
-                                key={opt.id}
-                                onPress={() => opt.id !== 'me' && !partner ? null : setAssignMode(opt.id as any)}
-                                style={[styles.selectBtn, assignMode === opt.id && styles.selectBtnActive, (opt.id !== 'me' && !partner) && {opacity: 0.5}]}
-                            >
-                                <Text style={[styles.selectText, assignMode === opt.id && styles.selectTextActive]}>{opt.label.toUpperCase()}</Text>
+                    <View>
+                        <Text style={styles.label}>DUE DATE</Text>
+                        <View style={{flexDirection: 'row', gap: 10}}>
+                            <Pressable onPress={openDatePicker} style={styles.dateBtn}>
+                                <Text style={{fontWeight: '600'}}>{dateLabel}</Text>
                             </Pressable>
-                        ))}
+                            <Pressable onPress={openTimePicker} style={styles.dateBtn}>
+                                <Text style={{fontWeight: '600'}}>{timeLabel}</Text>
+                            </Pressable>
+                        </View>
+                        {(pickedDate || pickedTime) && (
+                            <Pressable onPress={() => {setPickedDate(null); setPickedTime(null)}} style={{marginTop: 10}}>
+                                <Text style={{color: '#ff3b30', fontWeight: '600', fontSize: 12}}>Clear Date & Time</Text>
+                            </Pressable>
+                        )}
                     </View>
-                </View>
 
-                <View>
-                    <Text style={styles.label}>DETAILS</Text>
-                    <TextInput
-                        value={title}
-                        onChangeText={setTitle}
-                        placeholder="Task Title"
-                        style={styles.input}
-                        placeholderTextColor="#aaa"
-                    />
-                    <TextInput
-                        value={desc}
-                        onChangeText={setDesc}
-                        placeholder="Description (optional)"
-                        multiline
-                        style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-                        placeholderTextColor="#aaa"
-                    />
+                    <Pressable onPress={createTask} style={styles.createBtn}>
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.createBtnText}>Create Task</Text>}
+                    </Pressable>
+                    
+                    <Pressable onPress={() => setTab('shared')} style={{alignItems: 'center'}}>
+                        <Text style={{color: '#999', fontWeight: '600'}}>Cancel</Text>
+                    </Pressable>
                 </View>
-
-                <View>
-                    <Text style={styles.label}>DUE DATE</Text>
-                    <View style={{flexDirection: 'row', gap: 10}}>
-                         <Pressable onPress={openDatePicker} style={styles.dateBtn}>
-                             <Text style={{fontWeight: '600'}}>{dateLabel}</Text>
-                         </Pressable>
-                         <Pressable onPress={openTimePicker} style={styles.dateBtn}>
-                             <Text style={{fontWeight: '600'}}>{timeLabel}</Text>
-                         </Pressable>
-                    </View>
-                    {(pickedDate || pickedTime) && (
-                        <Pressable onPress={() => {setPickedDate(null); setPickedTime(null)}} style={{marginTop: 10}}>
-                            <Text style={{color: '#ff3b30', fontWeight: '600', fontSize: 12}}>Clear Date & Time</Text>
-                        </Pressable>
-                    )}
-                </View>
-
-                <Pressable onPress={createTask} style={styles.createBtn}>
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.createBtnText}>Create Task</Text>}
-                </Pressable>
-                
-                <Pressable onPress={() => setTab('shared')} style={{alignItems: 'center'}}>
-                    <Text style={{color: '#999', fontWeight: '600'}}>Cancel</Text>
-                </Pressable>
-             </View>
            </ScrollView>
-        ) : null}
+          );
+      }
 
-        {/* Lists */}
-        {tab === "shared" ? (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, gap: 24 }}>
+      if(tab === 'requests') {
+          return (
+             <Animated.ScrollView 
+               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, paddingTop: 180, gap: 16 }}
+               onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
+             >
+                {requests.length === 0 ? (
+                <View style={{padding: 40, alignItems: 'center'}}>
+                    <Text style={{color: '#ccc', fontSize: 18, fontWeight: '600'}}>No pending requests</Text>
+                </View>
+                ) : (
+                requests.map((t, i) => (
+                    <View key={t.id} style={[styles.card, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee' }]}>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10}}>
+                            <Text style={{fontSize: 20, fontWeight: '800'}}>{t.title}</Text>
+                            <AvatarBubble uri={memberMap.get(t.created_by)?.profiles?.avatar_url} label={labelName(memberMap.get(t.created_by))} size={28} />
+                    </View>
+                    {t.description ? <Text style={{color: '#666', marginBottom: 16}}>{t.description}</Text> : null}
+                    
+                    <View style={{flexDirection: 'row', gap: 12}}>
+                        <Pressable onPress={() => approveTask(t.id)} style={[styles.actionBtn, {backgroundColor: '#000'}]}>
+                            <Text style={{color: '#fff', fontWeight: 'bold'}}>Accept</Text>
+                        </Pressable>
+                        <Pressable onPress={() => rejectTask(t.id)} style={[styles.actionBtn, {backgroundColor: '#f2f2f2'}]}>
+                            <Text style={{color: '#000', fontWeight: 'bold'}}>Reject</Text>
+                        </Pressable>
+                    </View>
+                    </View>
+                ))
+                )}
+          </Animated.ScrollView>
+          );
+      }
+
+      // Shared List
+      return (
+        <Animated.ScrollView 
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, paddingTop: 180, gap: 24 }}
+            onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+        >
             {Object.entries(grouped).map(([bucket, list]) => {
                 if(list.length === 0) return null;
                 return (
@@ -596,7 +621,7 @@ export default function TasksScreen({
                             const scope = (t.assigned_scope ?? "single") as string;
                             const isBoth = scope === "both";
                             const assignedMember = memberMap.get(t.assigned_to) || null;
-                            const theme = getTheme(t.id.charCodeAt(0)); // deterministic color based on ID
+                            const theme = getTheme(t.id.charCodeAt(0));
                             const isPending = t.state !== "accepted";
 
                             return (
@@ -609,22 +634,22 @@ export default function TasksScreen({
                                 ]}
                                 >
                                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
-                                     <View style={{flex: 1, marginRight: 10}}>
-                                         <Text style={[styles.cardTitle, { color: theme.text, textDecorationLine: t.is_completed ? 'line-through' : 'none', opacity: t.is_completed ? 0.5 : 1 }]}>
-                                             {t.title}
-                                         </Text>
-                                         {t.description ? <Text style={{ color: theme.text, opacity: 0.7, marginTop: 4 }} numberOfLines={2}>{t.description}</Text> : null}
-                                     </View>
-                                     
-                                     {/* Checkbox Circle */}
-                                     <View style={{
-                                         width: 32, height: 32, borderRadius: 16, 
-                                         borderWidth: 2, borderColor: theme.pillBorder,
-                                         backgroundColor: t.is_completed ? theme.pillBorder : 'transparent',
-                                         alignItems: 'center', justifyContent: 'center'
-                                     }}>
-                                         {t.is_completed && <Text style={{color: theme.bg, fontWeight: 'bold'}}>✓</Text>}
-                                     </View>
+                                    <View style={{flex: 1, marginRight: 10}}>
+                                        <Text style={[styles.cardTitle, { color: theme.text, textDecorationLine: t.is_completed ? 'line-through' : 'none', opacity: t.is_completed ? 0.5 : 1 }]}>
+                                            {t.title}
+                                        </Text>
+                                        {t.description ? <Text style={{ color: theme.text, opacity: 0.7, marginTop: 4 }} numberOfLines={2}>{t.description}</Text> : null}
+                                    </View>
+                                    
+                                    {/* Checkbox Circle */}
+                                    <View style={{
+                                        width: 32, height: 32, borderRadius: 16, 
+                                        borderWidth: 2, borderColor: theme.pillBorder,
+                                        backgroundColor: t.is_completed ? theme.pillBorder : 'transparent',
+                                        alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        {t.is_completed && <Text style={{color: theme.bg, fontWeight: 'bold'}}>✓</Text>}
+                                    </View>
                                 </View>
 
                                 <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginTop: 20 }}>
@@ -669,43 +694,87 @@ export default function TasksScreen({
                     </View>
                 );
             })}
-             {Object.values(grouped).every(l => l.length === 0) && (
-                 <View style={{padding: 40, alignItems: 'center'}}>
-                     <Text style={{color: '#ccc', fontSize: 18, fontWeight: '600'}}>No tasks</Text>
-                 </View>
-             )}
-          </ScrollView>
-        ) : null}
-
-        {/* Requests List */}
-        {tab === "requests" ? (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, gap: 16 }}>
-            {requests.length === 0 ? (
-               <View style={{padding: 40, alignItems: 'center'}}>
-                  <Text style={{color: '#ccc', fontSize: 18, fontWeight: '600'}}>No pending requests</Text>
-              </View>
-            ) : (
-              requests.map((t, i) => (
-                <View key={t.id} style={[styles.card, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee' }]}>
-                   <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10}}>
-                        <Text style={{fontSize: 20, fontWeight: '800'}}>{t.title}</Text>
-                        <AvatarBubble uri={memberMap.get(t.created_by)?.profiles?.avatar_url} label={labelName(memberMap.get(t.created_by))} size={28} />
-                   </View>
-                   {t.description ? <Text style={{color: '#666', marginBottom: 16}}>{t.description}</Text> : null}
-                   
-                   <View style={{flexDirection: 'row', gap: 12}}>
-                      <Pressable onPress={() => approveTask(t.id)} style={[styles.actionBtn, {backgroundColor: '#000'}]}>
-                          <Text style={{color: '#fff', fontWeight: 'bold'}}>Accept</Text>
-                      </Pressable>
-                      <Pressable onPress={() => rejectTask(t.id)} style={[styles.actionBtn, {backgroundColor: '#f2f2f2'}]}>
-                          <Text style={{color: '#000', fontWeight: 'bold'}}>Reject</Text>
-                      </Pressable>
-                   </View>
+            {Object.values(grouped).every(l => l.length === 0) && (
+                <View style={{padding: 40, alignItems: 'center'}}>
+                    <Text style={{color: '#ccc', fontSize: 18, fontWeight: '600'}}>No tasks</Text>
                 </View>
-              ))
             )}
-          </ScrollView>
-        ) : null}
+        </Animated.ScrollView>
+      );
+  };
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: '#fff', position: 'relative' }}>
+        <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+
+        {/* Tabs Pinned Top (Below Main Header) */}
+        {tab !== 'create' && (
+            <View style={styles.topTabsBar}>
+            {([
+                { id: "shared", label: "Shared" },
+                { id: "requests", label: `Requests${requests.length ? ` (${requests.length})` : ""}` }
+            ] as const).map((tItem) => {
+                const isActive = tab === tItem.id;
+                return (
+                <Pressable
+                    key={tItem.id}
+                    onPress={() => setTab(tItem.id as any)}
+                    style={[styles.pill, isActive && styles.pillActive]}
+                >
+                    <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{tItem.label}</Text>
+                </Pressable>
+                );
+            })}
+            </View>
+        )}
+
+        {/* popup picker */}
+        <PickerModal
+          visible={pickerVisible}
+          mode={pickerMode}
+          value={pickerValue}
+          onCancel={() => setPickerVisible(false)}
+          onConfirm={(val) => {
+            setPickerVisible(false);
+            if (pickerMode === "date") setPickedDate(val);
+            else setPickedTime(val);
+          }}
+        />
+
+        {/* Content */}
+        <View style={{ flex: 1 }}>
+             {renderContent()}
+        </View>
+
+        {/* --- LIQUID BUBBLE FAB --- */}
+        <Animated.View
+          style={[
+            styles.fabContainer,
+            {
+              transform: [
+                { scale: fabAnim }, 
+                {
+                  translateY: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [50, 0], 
+                  }),
+                },
+              ],
+              opacity: fabAnim,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={() => setTab("create")}
+            style={({ pressed }) => [
+              styles.fabButton,
+              pressed && { transform: [{ scale: 0.9 }] },
+            ]}
+          >
+            <Text style={styles.fabIcon}>+</Text>
+          </Pressable>
+        </Animated.View>
 
       </View>
     </GestureHandlerRootView>
@@ -713,17 +782,22 @@ export default function TasksScreen({
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff', paddingTop: 60 },
     centerContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
-    header: { paddingHorizontal: 24, marginBottom: 10 },
-    backLink: { fontSize: 16, fontWeight: 'bold', color: '#666' },
-    title: { fontSize: 34, fontWeight: "800", letterSpacing: -1 },
-    addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
     
-    tabsContainer: { paddingHorizontal: 24, flexDirection: "row", gap: 12, marginBottom: 24 },
-    pill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: "#f4f4f4", borderWidth: 1, borderColor: "#f4f4f4" },
+    // Top Tabs Bar
+    topTabsBar: {
+        position: 'absolute',
+        top: 120, // Clear the main header height
+        left: 0,
+        right: 0,
+        paddingHorizontal: 24,
+        zIndex: 50,
+        flexDirection: 'row',
+        gap: 12
+    },
+    pill: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.05)", borderWidth: 1, borderColor: "transparent" },
     pillActive: { backgroundColor: "#000", borderColor: "#000" },
-    pillText: { fontWeight: "700", color: "#888" },
+    pillText: { fontWeight: "700", color: "#888", fontSize: 13 },
     pillTextActive: { color: "#fff" },
 
     bucketTitle: { fontSize: 13, fontWeight: "800", opacity: 0.4, letterSpacing: 1, marginLeft: 4, marginBottom: 4 },
@@ -755,4 +829,32 @@ const styles = StyleSheet.create({
     modalContent: { backgroundColor: "white", borderRadius: 24, padding: 24, gap: 16, paddingBottom: 40 },
     modalTitle: { fontSize: 18, fontWeight: "800", textAlign: 'center' },
     modalBtn: { flex: 1, height: 50, borderRadius: 25, alignItems: "center", justifyContent: "center" },
+
+    // FAB Styles
+    fabContainer: {
+        position: 'absolute',
+        bottom: 110, // Sits above the HomeGate nav bar
+        right: 24,
+        zIndex: 100,
+    },
+    fabButton: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: '#FF5A36', // Matches orange nav color
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: "#FF5A36",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    fabIcon: {
+        fontSize: 32,
+        color: 'white',
+        fontWeight: '400',
+        marginTop: -4,
+        marginLeft: 2
+    }
 });

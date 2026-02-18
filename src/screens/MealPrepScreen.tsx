@@ -16,6 +16,7 @@ import {
   Dimensions,
   LayoutAnimation,
   UIManager,
+  StatusBar,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import ViewShot, { captureRef } from "react-native-view-shot";
@@ -372,30 +373,20 @@ export default function MealPrepScreen({
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: "#fff", paddingTop: 60 }}>
+      <View style={{ flex: 1, backgroundColor: "#fff" }}>
+        <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
         
-        {/* BIG TITLE Header */}
-        <View style={{ paddingHorizontal: 24, marginBottom: 20 }}>
-          <Pressable onPress={onBack} hitSlop={20} style={{marginBottom: 10}}>
-            <Text style={{ fontSize: 16, fontWeight: "bold", color: "#666" }}>← Back</Text>
-          </Pressable>
-          
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-             <Text style={{ fontSize: 36, fontWeight: "900", letterSpacing: -1 }}>Meal Prep</Text>
-             <Pressable
-                onPress={() => setStatsVisible(true)}
-                style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#f0f0f0", alignItems: "center", justifyContent: "center" }}
-              >
-                <Text style={{ fontSize: 20 }}>📊</Text>
-              </Pressable>
-          </View>
-        </View>
-
-        {/* PROGRESS BAR WEEK NAV */}
-        <View style={styles.progressBarWrapper}>
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4}}>
-                <Text style={{fontSize: 12, fontWeight: '700', color: '#999'}}>PREP PROGRESS</Text>
-                <Text style={{fontSize: 12, fontWeight: '700', color: '#000'}}>{Math.round(progressPercent * 100)}%</Text>
+        {/* Pinned Top Controls (Progress + Stats) */}
+        {/* Placed absolute at top: 120 to sit below Global Header */}
+        <View style={styles.topControls}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4, alignItems: 'center'}}>
+                <View style={{flexDirection: 'row', gap: 8, alignItems: 'center'}}>
+                    <Text style={{fontSize: 12, fontWeight: '800', color: '#999', letterSpacing: 0.5}}>PREP PROGRESS</Text>
+                    <Text style={{fontSize: 12, fontWeight: '800', color: '#000'}}>{Math.round(progressPercent * 100)}%</Text>
+                </View>
+                <Pressable onPress={() => setStatsVisible(true)} hitSlop={10} style={{padding: 4, backgroundColor: '#f0f0f0', borderRadius: 12}}>
+                    <Text style={{fontSize: 16}}>📊</Text>
+                </Pressable>
             </View>
             
             <View style={styles.progressBarContainer}>
@@ -435,13 +426,13 @@ export default function MealPrepScreen({
 
         {/* STACKED CARDS LIST */}
         {loading && !entries.length ? (
-            <ActivityIndicator size="large" color="#000" style={{marginTop: 50}} />
+            <ActivityIndicator size="large" color="#000" style={{marginTop: 200}} />
         ) : (
             <ScrollView 
               contentContainerStyle={{ 
                 paddingHorizontal: 16, 
-                paddingBottom: 200, 
-                paddingTop: 10 
+                paddingBottom: 150, 
+                paddingTop: 220 // Push content down to clear global header + pinned progress bar
               }}
               showsVerticalScrollIndicator={false}
             >
@@ -451,23 +442,14 @@ export default function MealPrepScreen({
                 const isExpanded = expandedDay === dayIdx;
                 
                 // STACK LOGIC
-                // We use a smaller negative margin so headers are clearly visible ("seen entirely")
-                // but still maintain the "wallet stack" feel.
                 const isFirst = dayIdx === 0;
-                
-                // Calculate dynamic margin top
-                let marginTop = -50; // Default overlap amount (less aggressive than before)
+                let marginTop = -50; 
                 
                 if (isFirst) {
                     marginTop = 0;
                 } else if (expandedDay !== null) {
-                    // If a card is expanded
-                    if (expandedDay === dayIdx) {
-                       marginTop = 10; // The expanded card clears the one above it
-                    } else if (dayIdx > expandedDay) {
-                       marginTop = 10; // Cards below the expanded one also clear
-                    }
-                    // Cards *above* the expanded one keep the stack look (negative margin)
+                    if (expandedDay === dayIdx) marginTop = 10;
+                    else if (dayIdx > expandedDay) marginTop = 10;
                 }
 
                 return (
@@ -479,9 +461,9 @@ export default function MealPrepScreen({
                     { 
                       backgroundColor: theme.bg,
                       marginTop: marginTop,
-                      zIndex: dayIdx, // Standard stacking (later items on top)
+                      zIndex: dayIdx,
                       elevation: dayIdx,
-                      minHeight: isExpanded ? 320 : 160, // Make card bigger when expanded
+                      minHeight: isExpanded ? 320 : 160,
                     }
                   ]}
                 >
@@ -494,7 +476,6 @@ export default function MealPrepScreen({
                       </View>
                     </View>
                     
-                    {/* Collapsed Summary Indicators */}
                     {!isExpanded && (
                        <View style={{flexDirection: 'row', gap: 6, marginTop: 12}}>
                          {dayMeals.map((mType, i) => {
@@ -505,7 +486,6 @@ export default function MealPrepScreen({
                        </View>
                     )}
                     
-                    {/* MEAL CONTENT (Only visible if expanded) */}
                     {isExpanded && (
                     <View style={{ gap: 10, marginTop: 30 }}>
                     {dayMeals.map((mType) => {
@@ -532,7 +512,6 @@ export default function MealPrepScreen({
                                 </Text>
                             </View>
 
-                            {/* Status Indicators */}
                             {hasContent && (
                                 <View style={{flexDirection: 'row', gap: -8}}>
                                     {entry.cooked && (
@@ -561,7 +540,7 @@ export default function MealPrepScreen({
             </ScrollView>
         )}
 
-        {/* EDIT MODAL (Unchanged Logic) */}
+        {/* EDIT MODAL (Unchanged) */}
         <Modal visible={!!activeEntry} animationType="slide" presentationStyle="pageSheet">
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{flex: 1}}>
                 <View style={styles.modalContent}>
@@ -622,7 +601,7 @@ export default function MealPrepScreen({
             </KeyboardAvoidingView>
         </Modal>
 
-        {/* STATS MODAL (Unchanged Logic) */}
+        {/* STATS MODAL (Unchanged) */}
         <Modal visible={statsVisible} animationType="slide" transparent>
             <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 }}>
                 <View style={{ backgroundColor: "#fff", borderRadius: 32, overflow: 'hidden' }}>
@@ -678,8 +657,16 @@ export default function MealPrepScreen({
 }
 
 const styles = StyleSheet.create({
+    // --- Top Controls Pinned ---
+    topControls: {
+        position: 'absolute',
+        top: 120, // Below global header
+        left: 0, 
+        right: 0,
+        zIndex: 50,
+        paddingHorizontal: 20,
+    },
     // --- Progress Bar Styles ---
-    progressBarWrapper: { paddingHorizontal: 20, marginBottom: 15 },
     progressBarContainer: {
         flexDirection: 'row',
         backgroundColor: '#f2f2f2',
@@ -706,7 +693,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 2,
         elevation: 2,
-        overflow: 'hidden' // for the progress fill
+        overflow: 'hidden'
     },
     progressTextInactive: {
         fontSize: 13,
@@ -717,17 +704,15 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '800',
         color: '#000',
-        zIndex: 2, // Ensure text is above fill
+        zIndex: 2,
     },
 
     // --- Card Styles ---
     card: { 
         borderRadius: 28, 
         padding: 24, 
-        // Borders to define the card edges when stacked
         borderTopWidth: 1,
         borderColor: 'rgba(255,255,255,0.4)',
-        // Shadow for depth
         shadowColor: "#000",
         shadowOffset: { width: 0, height: -4 }, 
         shadowOpacity: 0.08,
