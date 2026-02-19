@@ -16,7 +16,11 @@ import {
   Dimensions,
   Easing
 } from "react-native";
+
+// --- Expo UI Native Materials ---
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import * as Haptics from 'expo-haptics';
 import { supabase } from "../lib/supabase";
 import HomeSetupScreen from "./HomeSetupScreen";
@@ -24,6 +28,14 @@ import ProfileEditScreen from "./ProfileEditScreen";
 import TasksScreen from "./TasksScreen";
 import NotesScreen from "./NotesScreen";
 import MealPrepScreen from "./MealPrepScreen";
+import AiTestScreen from "./AiTestScreen";
+import VoiceAiTestScreen from "./VoiceAiTestScreen";
+
+// --- Import Custom SVGs ---
+import HomeIcon from '../../assets/icons/home.svg';
+import TasksIcon from '../../assets/icons/tasks.svg';
+import MealIcon from '../../assets/icons/cooking-pot.svg';
+import NotesIcon from '../../assets/icons/notes.svg';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -60,7 +72,7 @@ type Member = {
   profiles: Profile | null;
 };
 
-type ScreenKey = "home" | "tasks" | "notes" | "mealPrep" | "profileEdit" | "profileCreate";
+type ScreenKey = "home" | "tasks" | "notes" | "mealPrep" | "profileEdit" | "profileCreate" | "aiTest" | "voiceAi";
 
 type TaskRow = {
   id: string;
@@ -156,11 +168,11 @@ function AnimatedCounter({ value }: { value: number }) {
 }
 
 // --- Floating Nav ---
-const TABS: { id: ScreenKey; icon: string; label: string }[] = [
-  { id: 'home', icon: '⌂', label: 'Home' },
-  { id: 'tasks', icon: '✓', label: 'Tasks' },
-  { id: 'mealPrep', icon: '🍳', label: 'Meals' },
-  { id: 'notes', icon: '📝', label: 'Notes' }
+const TABS: { id: ScreenKey; Icon: any; label: string }[] = [
+  { id: 'home', Icon: HomeIcon, label: 'Home' },
+  { id: 'tasks', Icon: TasksIcon, label: 'Tasks' },
+  { id: 'mealPrep', Icon: MealIcon, label: 'Meals' },
+  { id: 'notes', Icon: NotesIcon, label: 'Notes' }
 ];
 
 function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: ScreenKey) => void }) {
@@ -182,12 +194,18 @@ function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: 
 
   return (
     <View style={styles.navWrapper}>
-      {/* Liquid Glass Container */}
       <View style={styles.navContainer} onLayout={(e) => setLayoutWidth(e.nativeEvent.layout.width)}>
-        {/* Blur Background for entire bar */}
-        <BlurView intensity={30} tint="default" style={StyleSheet.absoluteFill} />
         
-        {/* Active Pill (Liquid Glass Orange) */}
+        {/* Apple Native Liquid Glass using Expo's systemThinMaterialLight */}
+        <BlurView 
+            intensity={100} 
+            tint="systemThinMaterialLight" 
+            style={StyleSheet.absoluteFill} 
+        />
+        {/* Crisp outer light border to mimic edge refraction */}
+        <View style={[StyleSheet.absoluteFill, { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.6)', borderRadius: 40 }]} />
+
+        {/* Active Pill */}
         {tabWidth > 0 && (
           <Animated.View 
             style={[
@@ -199,10 +217,19 @@ function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: 
               }
             ]}
           >
-             {/* Inner Blur for Liquid Effect */}
-             <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
-             {/* Orange Tint Layer */}
-             <View style={[StyleSheet.absoluteFill, { backgroundColor: '#FF5A36', opacity: 0.85 }]} />
+             {/* Base Purple Gradient */}
+             <LinearGradient 
+                colors={['#8A73FF', '#6A4DFF']} 
+                style={StyleSheet.absoluteFill} 
+             />
+             {/* 3D Gloss Highlight (top half) */}
+             <LinearGradient
+                colors={['rgba(255,255,255,0.5)', 'transparent']}
+                locations={[0, 0.4]}
+                style={StyleSheet.absoluteFill}
+             />
+             {/* Frosted inner edge border */}
+             <View style={[StyleSheet.absoluteFill, { borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', borderRadius: 30 }]} />
           </Animated.View>
         )}
 
@@ -219,7 +246,11 @@ function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: 
                 }} 
                 style={styles.navItem}
               >
-                <Text style={{ fontSize: 24, color: isActive ? '#fff' : '#8E8E93', fontWeight: isActive ? '900' : '500' }}>{tab.icon}</Text>
+                <tab.Icon 
+                  width={24} 
+                  height={24} 
+                  color={isActive ? '#ffffff' : '#8E8E93'} 
+                />
                 {isActive && (
                   <Animated.Text style={styles.navLabel}>{tab.label}</Animated.Text>
                 )}
@@ -235,6 +266,8 @@ function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: 
 // --- Main Screen ---
 export default function HomeGateScreen() {
   const [screen, setScreen] = useState<ScreenKey>("home");
+  const [prevScreen, setPrevScreen] = useState<ScreenKey>("home"); 
+
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -341,18 +374,15 @@ export default function HomeGateScreen() {
   };
 
   // --- TRANSITION LOGIC ---
-  
   useEffect(() => {
     if (screen === 'home') {
-        // Go to Logo State
         Animated.spring(headerStateAnim, { 
             toValue: 0, 
             useNativeDriver: true, 
             friction: 8, 
             tension: 40 
         }).start();
-    } else {
-        // Go to Title State
+    } else if (screen !== 'profileEdit' && screen !== 'profileCreate') {
         Animated.spring(headerStateAnim, { 
             toValue: 1, 
             useNativeDriver: true, 
@@ -363,6 +393,8 @@ export default function HomeGateScreen() {
   }, [screen]);
 
   const openProfile = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
+    setPrevScreen(screen); 
     setScreen('profileEdit');
     profileOpenAnim.setValue(0);
     Animated.spring(profileOpenAnim, {
@@ -379,7 +411,7 @@ export default function HomeGateScreen() {
       duration: 250,
       useNativeDriver: true,
       easing: Easing.inOut(Easing.ease)
-    }).start(() => setScreen('home'));
+    }).start(() => setScreen(prevScreen)); 
   };
 
   const me = members.find(m => m.user_id === userId);
@@ -388,57 +420,54 @@ export default function HomeGateScreen() {
   const partnerName = partner ? displayNameFromProfile(partner.profiles) : "Partner";
 
   // --- Animations ---
-  // Header Glass Blur Opacity (Only on Home when scrolling)
   const headerBlurOpacity = scrollY.interpolate({
     inputRange: [0, 50],
     outputRange: [0, 1],
     extrapolate: 'clamp'
   });
 
-  // Dynamic Header Transformations
-  // Logo scales down significantly to look like a label
   const logoScale = headerStateAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [1, 0.4] // Big (1) -> Small (0.4)
+      outputRange: [1, 0.55] 
   });
   
-  // Logo moves UP to become a top label
   const logoTranslateY = headerStateAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0, -20] 
+      outputRange: [0, -36] 
   });
   
-  // Logo moves LEFT to maintain alignment when scaling (since it scales from center)
   const logoTranslateX = headerStateAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0, -32] 
+      outputRange: [0, -26] 
   });
 
-  // Page Title Entrance (Opposite of logo)
-  // It enters from slightly below, and fades in
   const titleTranslateY = headerStateAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [20, 16] // Starts lower, lands at proper position
+      outputRange: [20, 2] 
   });
   const titleOpacity = headerStateAnim.interpolate({
       inputRange: [0, 0.6, 1],
-      outputRange: [0, 0, 1] // Fades in late
+      outputRange: [0, 0, 1] 
   });
 
-
-  // Profile Overlay
   const scale = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [0.12, 1] });
   const translateX = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_WIDTH/2 - 48, 0] });
   const translateY = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [-(SCREEN_HEIGHT/2 - 80), 0] });
   const overlayRadius = profileOpenAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [200, 50, 0] });
   const overlayOpacity = profileOpenAnim.interpolate({ inputRange: [0, 0.1, 1], outputRange: [0, 1, 1] });
 
-  // Get Page Title
+  const backdropOpacity = profileOpenAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 0.65] 
+  });
+
   const getPageTitle = () => {
-      switch(screen) {
+      const activeScreen = screen === 'profileEdit' ? prevScreen : screen;
+      switch(activeScreen) {
           case 'tasks': return "Tasks";
           case 'notes': return "Notes";
           case 'mealPrep': return "Meals";
+          case "voiceAi": return "Voice AI";
           default: return "";
       }
   };
@@ -447,15 +476,14 @@ export default function HomeGateScreen() {
     if (loading && !home) return <View style={styles.center}><ActivityIndicator color="#000" /></View>;
     if (!home) return <HomeSetupScreen onDone={load} />;
     if (screen === "profileCreate") return <ProfileEditScreen onBack={() => setScreen("home")} onSaved={load} mode={"create"} />;
+    if (screen === "aiTest") return <AiTestScreen spaceId={home.id} onBack={() => setScreen("home")} />;
 
     switch (screen) {
-        // Pass onBack but the header is now handled globally.
-        // Important: Sub-screens should NOT implement their own header anymore.
         case "tasks": return <TasksScreen spaceId={home.id} members={members} onBack={() => setScreen("home")} />;
         case "notes": return <NotesScreen spaceId={home.id} members={members} onBack={() => setScreen("home")} />;
         case "mealPrep": return <MealPrepScreen spaceId={home.id} members={members} onBack={() => setScreen("home")} />;
+        case "voiceAi": return <VoiceAiTestScreen />;
         
-        // --- HOME SCREEN ---
         case "home":
         default:
             return (
@@ -479,6 +507,9 @@ export default function HomeGateScreen() {
                           <Text style={styles.subLabel}>WELCOME TO</Text>
                           <Text style={styles.heroTitle}>{home.name.toUpperCase()}</Text>
                       </View>
+                      <Pressable onPress={() => setScreen("aiTest")} style={{ padding: 12, borderWidth: 2, borderRadius: 12 }}>
+                        <Text style={{ fontWeight: "900" }}>Open AI Test</Text>
+                      </Pressable>
                       
                       <View style={styles.quotePill}>
                         <Text style={{ fontWeight: '700', fontSize: 13, color: '#666' }}>"{quoteOfDay}"</Text>
@@ -504,7 +535,9 @@ export default function HomeGateScreen() {
                       <Text style={styles.sectionTitle}>YOUR HOME</Text>
                       <View style={{flexDirection: 'row', gap: 16}}>
                           <Pressable onPress={() => setScreen("tasks")} style={[styles.moduleCard, {backgroundColor: '#3661D6', flex: 1}]}>
-                              <View style={styles.iconCircle}><Text style={{fontSize: 20}}>✓</Text></View>
+                              <View style={styles.iconCircle}>
+                                  <TasksIcon width={24} height={24} color="#ffffff" />
+                              </View>
                               <View>
                                   <Text style={styles.cardTitle}>Tasks</Text>
                                   <Text style={styles.cardSub}>{previewTasks.length} pending</Text>
@@ -512,7 +545,9 @@ export default function HomeGateScreen() {
                           </Pressable>
 
                           <Pressable onPress={() => setScreen("mealPrep")} style={[styles.moduleCard, {backgroundColor: '#EE6B4D', flex: 1}]}>
-                              <View style={styles.iconCircle}><Text style={{fontSize: 20}}>🍳</Text></View>
+                              <View style={styles.iconCircle}>
+                                  <MealIcon width={24} height={24} color="#ffffff" />
+                              </View>
                               <View>
                                   <Text style={styles.cardTitle}>Meals</Text>
                                   <Text style={styles.cardSub}>Plan today</Text>
@@ -523,8 +558,8 @@ export default function HomeGateScreen() {
                       {/* Notes */}
                       <Pressable onPress={() => setScreen("notes")} style={[styles.moduleCard, {backgroundColor: '#E0Dbf0', height: 110, flexDirection: 'row', alignItems: 'center', padding: 24}]}>
                           <View style={[styles.iconCircle, {backgroundColor: 'rgba(255,255,255,0.5)', marginBottom: 0, marginRight: 20}]}>
-                              <Text style={{fontSize: 20}}>📝</Text>
-                          </View>
+                          <NotesIcon width={24} height={24} color="#1C1C1E" />
+                      </View>
                           <View style={{flex: 1}}>
                               <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
                                   <Text style={[styles.cardTitle, {color: '#1C1C1E'}]}>Notes</Text>
@@ -535,13 +570,42 @@ export default function HomeGateScreen() {
                               </Text>
                           </View>
                       </Pressable>
+                      
+                      {/* Voice AI Test */}
+                      <Pressable
+                        onPress={() => setScreen("voiceAi")}
+                        style={[
+                          styles.moduleCard,
+                          {
+                            backgroundColor: "#1C1C1E",
+                            height: 110,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            padding: 24,
+                          },
+                        ]}
+                      >
+                        <View style={[styles.iconCircle, { backgroundColor: "rgba(255,255,255,0.12)", marginBottom: 0, marginRight: 20 }]}>
+                          <Text style={{ color: "white", fontSize: 18, fontWeight: "800" }}>🎤</Text>
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                            <Text style={[styles.cardTitle, { color: "white" }]}>Voice AI</Text>
+                            <Text style={{ fontSize: 10, fontWeight: "900", opacity: 0.6, letterSpacing: 1, color: "white" }}>TEST</Text>
+                          </View>
+
+                          <Text style={[styles.cardSub, { color: "rgba(255,255,255,0.7)" }]}>
+                            Speak a command (task / meal / note)
+                          </Text>
+                        </View>
+                      </Pressable>
 
                       {/* Settings Card */}
                       <Pressable onPress={() => setHomeOpen(!homeOpen)}>
                           <View style={[styles.card, {backgroundColor: '#E9F588', minHeight: 120}]}>
                               <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20}}>
                                   <Text style={{fontSize: 12, fontWeight: '900', opacity: 0.5, letterSpacing: 1}}>SETTINGS</Text>
-                                  <Text style={{fontSize: 20}}>⚙️</Text>
                               </View>
 
                               {!homeOpen ? (
@@ -586,15 +650,24 @@ export default function HomeGateScreen() {
       
       <View style={{ flex: 1, position: 'relative' }}>
         
-        {/* --- GLOBAL DYNAMIC HEADER --- */}
-        {screen !== 'profileCreate' && screen !== 'profileEdit' && (
+        {/* --- GLOBAL DYNAMIC HEADER (Apple Glass Upgrade) --- */}
+        {screen !== 'profileCreate' && (
             <Animated.View style={styles.headerWrapper}>
-                {/* Background Blur:
-                    On Home: Opacity is controlled by ScrollY.
-                    On Other Screens: Always fully blurred (opacity 1)
+                
+                {/* Native iOS Apple Glass Material. 
+                  "systemThickMaterialLight" ties directly into UIBlurEffectStyle in SwiftUI/UIKit
                 */}
                 <Animated.View style={[StyleSheet.absoluteFill, { opacity: screen === 'home' ? headerBlurOpacity : 1 }]}>
-                    <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+                    <BlurView 
+                        intensity={100} 
+                        tint="systemThickMaterialLight" 
+                        style={StyleSheet.absoluteFill} 
+                    />
+                    {/* Add a subtle structural glow to the bottom edge */}
+                    <View style={[StyleSheet.absoluteFill, { 
+                        borderBottomWidth: StyleSheet.hairlineWidth, 
+                        borderBottomColor: 'rgba(255,255,255,0.7)' 
+                    }]} />
                 </Animated.View>
                 
                 <View style={styles.headerContainer}>
@@ -615,7 +688,7 @@ export default function HomeGateScreen() {
                             tume.
                         </Animated.Text>
                         
-                        {/* The Page Title (Visible only on sub-screens) */}
+                        {/* The Page Title */}
                         <Animated.Text 
                             style={[
                                 styles.pageTitle, 
@@ -638,6 +711,17 @@ export default function HomeGateScreen() {
 
         {/* Content */}
         <View style={{ flex: 1 }}>{renderCurrentScreen()}</View>
+
+        {/* --- HIGH CONTRAST DARK BACKDROP FOR PROFILE OVERLAY --- */}
+        {screen === 'profileEdit' && (
+             <Animated.View 
+                pointerEvents="none"
+                style={[
+                    StyleSheet.absoluteFill, 
+                    { backgroundColor: '#000', opacity: backdropOpacity, zIndex: 199 }
+                ]} 
+             />
+        )}
 
         {/* --- PROFILE OVERLAY --- */}
         {screen === 'profileEdit' && (
@@ -677,25 +761,34 @@ const styles = StyleSheet.create({
     // Header
     headerWrapper: {
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
-        height: 120, // Taller header
+        height: 130,
         justifyContent: 'flex-end',
         paddingBottom: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
     },
-    headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 24, paddingBottom: 10 },
+    headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 24, paddingBottom: 6 },
     
     headerTextContainer: {
         flex: 1,
-        height: 50, // Fixed height area for text to animate inside
+        height: 60,
         justifyContent: 'flex-end',
         position: 'relative',
     },
     logoText: { 
-        fontSize: 38, fontWeight: '900', letterSpacing: -2, color: '#000',
+        fontSize: 46, 
+        fontWeight: '900', 
+        letterSpacing: -2, 
+        color: '#000',
         position: 'absolute', bottom: 0, left: 0,
     },
     pageTitle: { 
-        fontSize: 34, fontWeight: '800', color: '#000', 
-        position: 'absolute', bottom: 0, left: 0 
+        fontSize: 40, 
+        fontWeight: '800', 
+        color: '#000', 
+        position: 'absolute', bottom: -10, left: 0 
     },
     
     // Profile Overlay
@@ -705,10 +798,10 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         overflow: 'hidden',
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.2,
-        shadowRadius: 20,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 20 },
+        shadowOpacity: 0.4,
+        shadowRadius: 40,
+        elevation: 20,
     },
 
     // Content
@@ -729,30 +822,28 @@ const styles = StyleSheet.create({
     actionBtn: { flex: 1, height: 44, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
     actionBtnText: { fontWeight: '800' },
 
-    // --- Floating Nav ---
+    // --- Floating Nav (Expo Native Material Match) ---
     navWrapper: { position: 'absolute', bottom: 30, left: 24, right: 24, alignItems: 'center', zIndex: 100 },
     navContainer: {
         flexDirection: 'row',
         padding: 6,
-        borderRadius: 100,
-        height: 68,
+        borderRadius: 40, 
+        height: 72, 
         width: '100%',
-        backgroundColor: 'rgba(255,255,255,0.25)', 
+        backgroundColor: 'transparent', 
         overflow: 'hidden', 
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
-        shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 25, shadowOffset: { width: 0, height: 10 },
+        shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 10 },
         elevation: 10,
         position: 'relative'
     },
     navPill: {
         position: 'absolute', top: 6, bottom: 6, left: 0, 
-        borderRadius: 40, zIndex: 0,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
-        shadowColor: '#FF5A36',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 8,
+        borderRadius: 30, 
+        zIndex: 0,
+        shadowColor: '#7B61FF', 
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
     },
     navItemsRow: { flex: 1, flexDirection: 'row', zIndex: 1 },
     navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
