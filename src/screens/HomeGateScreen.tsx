@@ -16,12 +16,7 @@ import {
   Dimensions,
   Easing
 } from "react-native";
-
-// --- Expo UI Native Materials & Audio ---
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
 import { supabase } from "../lib/supabase";
 
 import HomeSetupScreen from "./HomeSetupScreen";
@@ -30,14 +25,15 @@ import TasksScreen from "./TasksScreen";
 import NotesScreen from "./NotesScreen";
 import MealPrepScreen from "./MealPrepScreen";
 
+// --- Extracted Components ---
+import GlobalHeader from '../components/GlobalHeader';
+import FloatingNavBar from '../components/FloatingNavBar';
+import UnifiedAiInput from '../components/UnifiedAiInput';
+
 // --- Import Custom SVGs ---
-import HomeIcon from '../../assets/icons/home.svg';
 import TasksIcon from '../../assets/icons/tasks.svg';
 import MealIcon from '../../assets/icons/cooking-pot.svg';
 import NotesIcon from '../../assets/icons/notes.svg';
-
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -49,6 +45,8 @@ if (Platform.OS === 'android') {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // --- Types ---
+export type ScreenKey = "home" | "tasks" | "notes" | "mealPrep" | "profileEdit" | "profileCreate";
+
 type Home = {
   id: string;
   name: string;
@@ -59,7 +57,7 @@ type Home = {
   created_at: string; 
 };
 
-type Profile = {
+export type Profile = {
   id: string;
   first_name: string | null;
   last_name: string | null;
@@ -73,8 +71,6 @@ type Member = {
   user_id: string;
   profiles: Profile | null;
 };
-
-type ScreenKey = "home" | "tasks" | "notes" | "mealPrep" | "profileEdit" | "profileCreate";
 
 type TaskRow = {
   id: string;
@@ -126,24 +122,8 @@ async function copyToClipboardSafe(text: string) {
 function AvatarBubble({ uri, label, size = 40, inverse = false }: { uri?: string | null; label: string; size?: number, inverse?: boolean }) {
   const initials = useMemo(() => initialsFromName(label), [label]);
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        borderWidth: 1,
-        borderColor: inverse ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)",
-        overflow: "hidden",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: inverse ? "rgba(255,255,255,0.2)" : "white",
-      }}
-    >
-      {uri ? (
-        <Image source={{ uri }} style={{ width: size, height: size }} />
-      ) : (
-        <Text style={{ fontWeight: "900", fontSize: size * 0.4, color: inverse ? "#fff" : "#000" }}>{initials}</Text>
-      )}
+    <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 1, borderColor: inverse ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)", overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: inverse ? "rgba(255,255,255,0.2)" : "white" }}>
+      {uri ? <Image source={{ uri }} style={{ width: size, height: size }} /> : <Text style={{ fontWeight: "900", fontSize: size * 0.4, color: inverse ? "#fff" : "#000" }}>{initials}</Text>}
     </View>
   );
 }
@@ -169,60 +149,6 @@ function AnimatedCounter({ value }: { value: number }) {
   return <Text style={{ color: '#fff', fontSize: 56, fontWeight: '900', lineHeight: 60 }}>{displayValue}</Text>;
 }
 
-// --- Floating Nav ---
-const TABS: { id: ScreenKey; Icon: any; label: string }[] = [
-  { id: 'home', Icon: HomeIcon, label: 'Home' },
-  { id: 'tasks', Icon: TasksIcon, label: 'Tasks' },
-  { id: 'mealPrep', Icon: MealIcon, label: 'Meals' },
-  { id: 'notes', Icon: NotesIcon, label: 'Notes' }
-];
-
-function FloatingNavBar({ active, onChange }: { active: string, onChange: (key: ScreenKey) => void }) {
-  const [layoutWidth, setLayoutWidth] = useState(0);
-  const translateX = useRef(new Animated.Value(0)).current;
-  const tabWidth = layoutWidth > 0 ? (layoutWidth - 12) / TABS.length : 0;
-
-  useEffect(() => {
-    const activeIndex = TABS.findIndex(t => t.id === active);
-    if (activeIndex !== -1 && tabWidth > 0) {
-      Animated.spring(translateX, {
-        toValue: (activeIndex * tabWidth) + 6,
-        useNativeDriver: true,
-        friction: 6,
-        tension: 80,
-      }).start();
-    }
-  }, [active, tabWidth]);
-
-  return (
-    <View style={styles.navWrapper}>
-      <View style={styles.navContainer} onLayout={(e) => setLayoutWidth(e.nativeEvent.layout.width)}>
-        <BlurView intensity={100} tint="systemThinMaterialLight" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.6)', borderRadius: 40 }]} />
-
-        {tabWidth > 0 && (
-          <Animated.View style={[styles.navPill, { width: tabWidth, transform: [{ translateX }], overflow: 'hidden' }]}>
-             <LinearGradient colors={['#8A73FF', '#6A4DFF']} style={StyleSheet.absoluteFill} />
-             <LinearGradient colors={['rgba(255,255,255,0.5)', 'transparent']} locations={[0, 0.4]} style={StyleSheet.absoluteFill} />
-             <View style={[StyleSheet.absoluteFill, { borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', borderRadius: 30 }]} />
-          </Animated.View>
-        )}
-
-        <View style={styles.navItemsRow}>
-          {TABS.map((tab) => {
-            const isActive = active === tab.id;
-            return (
-              <Pressable key={tab.id} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onChange(tab.id); }} style={styles.navItem}>
-                <tab.Icon width={24} height={24} color={isActive ? '#ffffff' : '#8E8E93'} />
-                {isActive && <Animated.Text style={styles.navLabel}>{tab.label}</Animated.Text>}
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-    </View>
-  );
-}
 
 // --- Main Screen ---
 export default function HomeGateScreen() {
@@ -235,21 +161,11 @@ export default function HomeGateScreen() {
   const [home, setHome] = useState<Home | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
-  
-  // --- Unified AI State ---
-  const [aiInputText, setAiInputText] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
-  const [aiStatus, setAiStatus] = useState("Ask me anything...");
-  const recordingRef = useRef<Audio.Recording | null>(null);
 
   // --- Animation Values ---
   const scrollY = useRef(new Animated.Value(0)).current;
   const profileOpenAnim = useRef(new Animated.Value(0)).current; 
   const headerStateAnim = useRef(new Animated.Value(0)).current; 
-  
-  // AI Spinning Border Animation
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
 
   // Home flip
   const [homeOpen, setHomeOpen] = useState(false);
@@ -270,223 +186,6 @@ export default function HomeGateScreen() {
 
   const QUOTES = ["Us is my favorite place.", "Same team, same dream.", "You + me = home.", "I choose you, daily."];
   const quoteOfDay = useMemo(() => QUOTES[Math.floor(Date.now() / 86400000) % QUOTES.length], []);
-
-  // --- Start Background Rotations ---
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 4000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
-  }, [rotateAnim]);
-
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  const startGlow = useCallback(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [glowAnim]);
-
-  const stopGlow = useCallback(() => {
-    glowAnim.stopAnimation();
-    Animated.timing(glowAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start();
-  }, [glowAnim]);
-
-
-  // ==========================================
-  // --- DIRECT SUPABASE FETCH LOGIC ---
-  // ==========================================
-
-  async function getAccessToken() {
-    const { data: sessionData, error: sessErr } = await supabase.auth.getSession();
-    if (sessErr) throw sessErr;
-
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) throw new Error("No access_token. Are you logged in?");
-    return accessToken;
-  }
-
-  // 1. Text Submission Logic (ai_action)
-  const handleTextSubmit = async () => {
-    if (!aiInputText.trim() || !home?.id) return;
-    
-    const textPrompt = aiInputText.trim();
-    setAiInputText(""); // Clear input immediately for UX
-    setAiStatus("Thinking...");
-    startGlow();
-
-    try {
-      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        throw new Error("Missing ENV variables (SUPABASE_URL or ANON_KEY)");
-      }
-
-      const accessToken = await getAccessToken();
-
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/ai_action`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          apikey: SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({ space_id: home.id, text: textPrompt }),
-      });
-
-      const raw = await resp.text();
-      let json: any = null;
-      try { json = JSON.parse(raw); } catch {}
-
-      if (!resp.ok) {
-        throw new Error(`ai_action failed: HTTP ${resp.status}`);
-      }
-
-      stopGlow();
-      setAiStatus("✅ Created! (task/note/meal)");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Refresh the home dashboard
-      await loadDashboard();
-
-      setTimeout(() => setAiStatus("Ask me anything..."), 2500);
-    } catch (err: any) {
-      console.error("AI Action Error:", err);
-      stopGlow();
-      setAiStatus(`Error: ${err?.message?.slice(0, 20) || "Failed request"}`);
-      setTimeout(() => setAiStatus("Ask me anything..."), 3000);
-    }
-  };
-
-  // 2. Voice Press-In Logic (Start Recording)
-  const handleRecordPressIn = async () => {
-    try {
-      const perm = await Audio.requestPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert("Permission needed", "Microphone permission is required.");
-        return;
-      }
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const rec = new Audio.Recording();
-      recordingRef.current = rec;
-
-      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await rec.startAsync();
-
-      setIsRecording(true);
-      setAiStatus("Recording...");
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      startGlow();
-    } catch (err: any) {
-      console.error("Failed to start recording", err);
-      setAiStatus(`Start error: ${err?.message ?? String(err)}`);
-    }
-  };
-
-  // 3. Voice Press-Out Logic (Upload -> Transcribe -> Action)
-  const handleRecordPressOut = async () => {
-    if (!isRecording || !home?.id) return;
-    setIsRecording(false);
-    
-    try {
-      setAiStatus("Saving audio...");
-      const rec = recordingRef.current;
-      if (!rec) throw new Error("Recording ref is missing");
-      
-      await rec.stopAndUnloadAsync();
-      const audioUri = rec.getURI();
-      recordingRef.current = null;
-
-      if (!audioUri) {
-        throw new Error("No recording URI found");
-      }
-      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        throw new Error("Missing ENV vars");
-      }
-
-      const accessToken = await getAccessToken();
-
-      // --- Transcribe Call ---
-      setAiStatus("Uploading to ai_transcribe...");
-
-      const fd = new FormData();
-      fd.append("file", {
-        uri: audioUri,
-        name: "voice.m4a",
-        type: "audio/m4a",
-      } as any);
-
-      const transcribeResp = await fetch(`${SUPABASE_URL}/functions/v1/ai_transcribe`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          apikey: SUPABASE_ANON_KEY, // Keeping consistent with Text fetch
-        },
-        body: fd,
-      });
-
-      const textRaw = await transcribeResp.text();
-      let transcribeJson: any = null;
-      try { transcribeJson = JSON.parse(textRaw); } catch {}
-
-      if (!transcribeResp.ok) {
-        throw new Error(`ai_transcribe failed: HTTP ${transcribeResp.status}`);
-      }
-
-      const transcript = transcribeJson?.text ?? "";
-      const cleaned = transcript.trim();
-
-      if (!cleaned) {
-        throw new Error("Transcribed text is empty. Try speaking louder.");
-      }
-
-      // --- Action Call ---
-      setAiStatus("Sending to ai_action...");
-
-      const actionResp = await fetch(`${SUPABASE_URL}/functions/v1/ai_action`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({ space_id: home.id, text: cleaned }),
-      });
-
-      const actionRaw = await actionResp.text();
-      if (!actionResp.ok) {
-        throw new Error(`ai_action failed: HTTP ${actionResp.status}`);
-      }
-
-      // D) Success!
-      stopGlow();
-      setAiStatus("✅ Created! (task/note/meal)");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      await loadDashboard();
-      setTimeout(() => setAiStatus("Ask me anything..."), 2500);
-
-    } catch (err: any) {
-      console.error("Voice Flow Error:", err);
-      stopGlow();
-      setAiStatus(`Error: ${err?.message?.slice(0, 20) || "Failed"}`);
-      setTimeout(() => setAiStatus("Ask me anything..."), 3500);
-    }
-  };
-
 
   const load = useCallback(async () => {
     if (loadingRef.current) return;
@@ -586,29 +285,12 @@ export default function HomeGateScreen() {
   const partnerName = partner ? displayNameFromProfile(partner.profiles) : "Partner";
 
   // --- Animations ---
-  const headerBlurOpacity = scrollY.interpolate({ inputRange: [0, 50], outputRange: [0, 1], extrapolate: 'clamp' });
-  const logoScale = headerStateAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.55] });
-  const logoTranslateY = headerStateAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -36] });
-  const logoTranslateX = headerStateAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -26] });
-  const titleTranslateY = headerStateAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 2] });
-  const titleOpacity = headerStateAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0, 1] });
-
   const scale = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [0.12, 1] });
   const translateX = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_WIDTH/2 - 48, 0] });
   const translateY = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [-(SCREEN_HEIGHT/2 - 80), 0] });
   const overlayRadius = profileOpenAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [200, 50, 0] });
   const overlayOpacity = profileOpenAnim.interpolate({ inputRange: [0, 0.1, 1], outputRange: [0, 1, 1] });
   const backdropOpacity = profileOpenAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.65] });
-
-  const getPageTitle = () => {
-      const activeScreen = screen === 'profileEdit' ? prevScreen : screen;
-      switch(activeScreen) {
-          case 'tasks': return "Tasks";
-          case 'notes': return "Notes";
-          case 'mealPrep': return "Meals";
-          default: return "";
-      }
-  };
 
   const renderCurrentScreen = () => {
     if (loading && !home) return <View style={styles.center}><ActivityIndicator color="#000" /></View>;
@@ -630,55 +312,16 @@ export default function HomeGateScreen() {
                     contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 150, paddingTop: 140, gap: 20 }} 
                     showsVerticalScrollIndicator={false}
                   >
-                      {/* Welcome */}
                       <View style={{ marginTop: 0, marginBottom: 10 }}>
                           <Text style={styles.subLabel}>WELCOME TO</Text>
                           <Text style={styles.heroTitle}>{home.name.toUpperCase()}</Text>
                       </View>
 
-                      {/* --- UNIFIED AI INPUT (Functional Raw Fetch) --- */}
-                      <View style={styles.aiSectionContainer}>
-                        <Text style={styles.aiStatusText}>{aiStatus}</Text>
-                        
-                        <View style={styles.aiInputWrapper}>
-                          <Animated.View style={[styles.gradientBorder, { transform: [{ rotate: spin }] }, isRecording && { opacity: 1 }]}>
-                            <LinearGradient
-                              colors={['#FF5A36', '#7B61FF', '#FF5A36', '#7B61FF']}
-                              start={{ x: 0, y: 0 }}
-                              end={{ x: 1, y: 1 }}
-                              style={StyleSheet.absoluteFill}
-                            />
-                          </Animated.View>
-
-                          <View style={styles.aiInputInner}>
-                            <TextInput
-                              style={styles.aiTextInput}
-                              placeholder="Type or hold mic to speak..."
-                              placeholderTextColor="#9ca3af"
-                              value={aiInputText}
-                              onChangeText={setAiInputText}
-                              onSubmitEditing={handleTextSubmit}
-                              returnKeyType="send"
-                              editable={!isRecording}
-                            />
-                            
-                            {/* Dynamic Button: Send vs Mic */}
-                            {aiInputText.length > 0 ? (
-                              <Pressable style={styles.actionAIBtn} onPress={handleTextSubmit}>
-                                <Text style={styles.sendIcon}>↗</Text>
-                              </Pressable>
-                            ) : (
-                              <Pressable
-                                style={[styles.actionAIBtn, isRecording && styles.actionBtnRecording]}
-                                onPressIn={handleRecordPressIn}
-                                onPressOut={handleRecordPressOut}
-                              >
-                                <Text style={styles.micIcon}>{isRecording ? "🎙️" : "🎤"}</Text>
-                              </Pressable>
-                            )}
-                          </View>
-                        </View>
-                      </View>
+                      {/* --- UNIFIED AI COMPONENT INJECTED HERE --- */}
+                      <UnifiedAiInput 
+                        spaceId={home?.id} 
+                        onComplete={loadDashboard} 
+                      />
                       
                       <View style={styles.quotePill}>
                         <Text style={{ fontWeight: '700', fontSize: 13, color: '#666' }}>"{quoteOfDay}"</Text>
@@ -791,27 +434,15 @@ export default function HomeGateScreen() {
         
         {/* --- GLOBAL DYNAMIC HEADER --- */}
         {screen !== 'profileCreate' && (
-            <Animated.View style={styles.headerWrapper}>
-                <Animated.View style={[StyleSheet.absoluteFill, { opacity: screen === 'home' ? headerBlurOpacity : 1 }]}>
-                    <BlurView intensity={100} tint="systemThickMaterialLight" style={StyleSheet.absoluteFill} />
-                    <View style={[StyleSheet.absoluteFill, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.7)' }]} />
-                </Animated.View>
-                
-                <View style={styles.headerContainer}>
-                    <View style={styles.headerTextContainer}>
-                        <Animated.Text style={[styles.logoText, { transform: [{ scale: logoScale }, { translateY: logoTranslateY }, { translateX: logoTranslateX }] }]}>
-                            tume.
-                        </Animated.Text>
-                        <Animated.Text style={[styles.pageTitle, { opacity: titleOpacity, transform: [{ translateY: titleTranslateY }] }]}>
-                            {getPageTitle()}
-                        </Animated.Text>
-                    </View>
-
-                    <Pressable onPress={openProfile} hitSlop={20}>
-                       <AvatarBubble uri={profile?.avatar_url} label={myName} size={48} />
-                    </Pressable>
-                </View>
-            </Animated.View>
+            <GlobalHeader 
+                screen={screen}
+                prevScreen={prevScreen}
+                scrollY={scrollY}
+                headerStateAnim={headerStateAnim}
+                profile={profile}
+                myName={myName}
+                onOpenProfile={openProfile}
+            />
         )}
 
         <View style={{ flex: 1 }}>{renderCurrentScreen()}</View>
@@ -826,6 +457,7 @@ export default function HomeGateScreen() {
              </Animated.View>
         )}
 
+        {/* --- FLOATING NAV --- */}
         {home && screen !== 'profileEdit' && screen !== 'profileCreate' && (
              <FloatingNavBar active={screen} onChange={setScreen} />
         )}
@@ -837,38 +469,10 @@ export default function HomeGateScreen() {
 const styles = StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     card: { borderRadius: 32, padding: 24 },
-    
-    // Header
-    headerWrapper: {
-        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
-        height: 130,
-        justifyContent: 'flex-end',
-        paddingBottom: 15,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10,
-    },
-    headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 24, paddingBottom: 6 },
-    headerTextContainer: { flex: 1, height: 60, justifyContent: 'flex-end', position: 'relative' },
-    logoText: { fontSize: 46, fontWeight: '900', letterSpacing: -2, color: '#000', position: 'absolute', bottom: 0, left: 0 },
-    pageTitle: { fontSize: 40, fontWeight: '800', color: '#000', position: 'absolute', bottom: -10, left: 0 },
-    
-    // Profile Overlay
     profileOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 200, backgroundColor: '#fff', overflow: 'hidden', shadowColor: "#000", shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.4, shadowRadius: 40, elevation: 20 },
 
-    // Content
     heroTitle: { fontSize: 36, fontWeight: '800', letterSpacing: -1, color: '#000', marginTop: 0 },
     subLabel: { fontSize: 12, fontWeight: '800', color: '#999', letterSpacing: 1 },
-
-    // --- Unified AI Element Styles ---
-    aiSectionContainer: { marginBottom: 16, marginTop: 6 },
-    aiStatusText: { fontSize: 12, color: '#6b7280', marginBottom: 8, marginLeft: 4, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-    aiInputWrapper: { height: 60, width: '100%', borderRadius: 30, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: '#e5e7eb', shadowColor: '#7B61FF', shadowOpacity: 0.2, shadowRadius: 15, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
-    gradientBorder: { position: 'absolute', width: SCREEN_WIDTH * 1.5, height: SCREEN_WIDTH * 1.5, opacity: 0.8 },
-    aiInputInner: { flexDirection: 'row', alignItems: 'center', width: '98.5%', height: '92%', backgroundColor: '#ffffff', borderRadius: 28, paddingLeft: 20, paddingRight: 6 },
-    aiTextInput: { flex: 1, height: '100%', fontSize: 16, color: '#111827', fontWeight: '500' },
-    actionAIBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
-    actionBtnRecording: { backgroundColor: '#FF5A36' },
-    sendIcon: { fontSize: 20, fontWeight: '900', color: '#7B61FF' },
-    micIcon: { fontSize: 18 },
 
     heroCard: { backgroundColor: '#1C1C1E', borderRadius: 32, padding: 30, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     quotePill: { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f4f4f4', marginBottom: 10 },
@@ -878,16 +482,7 @@ const styles = StyleSheet.create({
     cardSub: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '700', marginTop: 4 },
     iconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
 
-    // Edit Inputs
     input: { backgroundColor: '#fff', padding: 12, borderRadius: 12, fontSize: 16, fontWeight: '600', marginBottom: 8 },
     actionBtn: { flex: 1, height: 44, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-    actionBtnText: { fontWeight: '800' },
-
-    // --- Floating Nav ---
-    navWrapper: { position: 'absolute', bottom: 30, left: 24, right: 24, alignItems: 'center', zIndex: 100 },
-    navContainer: { flexDirection: 'row', padding: 6, borderRadius: 40, height: 72, width: '100%', backgroundColor: 'transparent', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 10, position: 'relative' },
-    navPill: { position: 'absolute', top: 6, bottom: 6, left: 0, borderRadius: 30, zIndex: 0, shadowColor: '#7B61FF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
-    navItemsRow: { flex: 1, flexDirection: 'row', zIndex: 1 },
-    navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
-    navLabel: { color: '#fff', fontWeight: '800', fontSize: 14, marginLeft: 8 }
+    actionBtnText: { fontWeight: '800' }
 });
