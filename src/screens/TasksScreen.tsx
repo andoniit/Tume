@@ -787,7 +787,7 @@ const styles = StyleSheet.create({
     // Top Tabs Bar
     topTabsBar: {
         position: 'absolute',
-        top: 120, // Clear the main header height
+        top: 140, // Clear the main header height
         left: 0,
         right: 0,
         paddingHorizontal: 24,

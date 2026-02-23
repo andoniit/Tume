@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { View, Animated, StyleSheet, Pressable, Image, Text } from "react-native";
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient'; // <-- Added LinearGradient
 
 type ScreenKey = "home" | "tasks" | "notes" | "mealPrep" | "profileEdit" | "profileCreate";
 type Profile = { id: string; avatar_url: string | null; /* ... other fields ... */ };
@@ -55,8 +56,18 @@ export default function GlobalHeader({ screen, prevScreen, scrollY, headerStateA
   return (
     <Animated.View style={styles.headerWrapper}>
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: screen === 'home' ? headerBlurOpacity : 1 }]}>
-            <BlurView intensity={100} tint="systemThickMaterialLight" style={StyleSheet.absoluteFill} />
-            <View style={[StyleSheet.absoluteFill, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.7)' }]} />
+            {/* 1. Base Blur for the frosted glass distortion */}
+            <BlurView intensity={10} tint="light" style={StyleSheet.absoluteFill} />
+            
+            {/* 2. Gradient overlay fading from solid white at the top to transparent at the bottom */}
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0)']}
+              start={{ x: 0, y: 0.2 }}
+              end={{ x: 0, y: 0.9 }}
+              style={StyleSheet.absoluteFill}
+            />
+            
+            <View style={[StyleSheet.absoluteFill, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255, 255, 255, 0)' }]} />
         </Animated.View>
         
         <View style={styles.headerContainer}>

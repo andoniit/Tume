@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     // --- Top Controls Pinned ---
     topControls: {
         position: 'absolute',
-        top: 120, // Below global header
+        top: 140, // Below global header
         left: 0, 
         right: 0,
         zIndex: 50,
