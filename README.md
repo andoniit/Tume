@@ -1,4 +1,4 @@
-# Tume 🎙️ 
+# Tume
 
 **AI-Powered Management App for Couples**
 
